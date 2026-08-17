@@ -1,0 +1,33 @@
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ===== PyInstaller build artifacts =====
+build/
+dist/
+_out_*/
+out/
+_MEI*/
+*.spec.bak
+
+# ===== Logs =====
+*.log
+app/_last_out.txt
+
+# ===== Misc build scratch =====
+app/build.log
+
+# ===== Backups / extracted old binaries (reverse-engineering artifacts) =====
+app/_backups/
+source/
+
+# ===== OS / editor =====
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DISPLAY SWITCHER // 终端</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   DESIGN TOKENS — Arknights:Endfield inspired (industrial sci-fi)
+   ============================================================ */
+:root{
+  --bg-void:#05080d;
+  --bg-deep:#070b12;
+  --bg-panel:#0c121c;
+  --bg-panel-2:#0f1722;
+  --bg-elev:#121c29;
+  --line:#1c2a3a;
+  --line-soft:#16212e;
+  --accent-rgb:55,224,212;
+  --glow-op:.7;
+  --cyan:#37e0d4;
+  --cyan-bright:#5cf2e6;
+  --cyan-dim:#1d7a74;
+  --blue:#3b82f6;
+  --amber:#f5a623;
+  --red:#ff5d5d;
+  --txt:#c7d3df;
+  --txt-strong:#eef5fb;
+  --txt-mute:#6b7c8d;
+  --txt-faint:#3f4d5c;
+  --glow-cyan:0 0 18px rgba(var(--accent-rgb),.45);
+  --glow-cyan-soft:0 0 8px rgba(var(--accent-rgb),.25);
+  --r:4px;
+  --clip:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --disp:'Orbitron',sans-serif;
+  --tech:'Rajdhani',sans-serif;
+  --body:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg-void);
+  color:var(--txt);
+  font-family:var(--body);
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:rgba(55,224,212,.3);color:#fff}
+/* scrollbar */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--cyan-dim);border-radius:8px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ============================================================
+   BACKGROUND LAYERS
+   ============================================================ */
+#particles{position:fixed;inset:0;z-index:0;pointer-events:none}
+.bg-grid{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(var(--accent-rgb),.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(var(--accent-rgb),.05) 1px,transparent 1px);
+  background-size:46px 46px;
+  mask-image:radial-gradient(ellipse 80% 70% at 50% 40%,#000 30%,transparent 100%);
+  -webkit-mask-image:radial-gradient(ellipse 80% 70% at 50% 40%,#000 30%,transparent 100%);
+  animation:gridpan 30s linear infinite;
+}
+@keyframes gridpan{from{background-position:0 0,0 0}to{background-position:46px 46px,46px 46px}}
+.bg-glow{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  opacity:var(--glow-op);
+  background:
+    radial-gradient(60% 50% at 78% 12%,rgba(var(--accent-rgb),.10),transparent 60%),
+    radial-gradient(55% 55% at 12% 88%,rgba(var(--accent-rgb),.12),transparent 60%),
+    radial-gradient(40% 40% at 50% 50%,rgba(var(--accent-rgb),.05),transparent 70%);
+}
+.scanlines{
+  position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.35;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.18) 2px 3px);
+  mix-blend-mode:multiply;
+}
+.vignette{position:fixed;inset:0;z-index:1;pointer-events:none;box-shadow:inset 0 0 240px 40px rgba(0,0,0,.85)}
+
+/* ============================================================
+   APP SHELL
+   ============================================================ */
+.app{position:relative;z-index:2;height:100vh;display:grid;grid-template-columns:78px 1fr;grid-template-rows:64px 1fr;grid-template-areas:"top top" "side main"}
+.topbar{grid-area:top}
+.sidebar{grid-area:side}
+.main{grid-area:main;overflow:hidden}
+
+/* ---------- TOP BAR ---------- */
+.topbar{
+  display:flex;align-items:center;gap:22px;padding:0 26px;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(12,18,28,.92),rgba(7,11,18,.7));
+  backdrop-filter:blur(8px);
+}
+.brand{display:flex;align-items:center;gap:13px}
+.brand .mark{
+  width:34px;height:34px;position:relative;flex:0 0 auto;
+  display:grid;place-items:center;
+  border:1.5px solid var(--cyan);clip-path:var(--clip);
+  background:radial-gradient(circle at 30% 30%,rgba(55,224,212,.25),transparent 70%);
+  box-shadow:var(--glow-cyan-soft);
+}
+.brand .mark::before{content:"";width:13px;height:13px;border:2px solid var(--cyan-bright);border-radius:50%;box-shadow:var(--glow-cyan)}
+.brand .mark::after{content:"";position:absolute;width:3px;height:3px;background:var(--cyan-bright);border-radius:50%;top:5px;right:6px;animation:blink 2.4s infinite}
+@keyframes blink{0%,92%,100%{opacity:1}96%{opacity:.2}}
+.brand .title{font-family:var(--disp);font-weight:700;letter-spacing:3px;font-size:15px;color:var(--txt-strong)}
+.brand .title b{color:var(--cyan)}
+.brand .sub{font-family:var(--mono);font-size:9.5px;letter-spacing:2px;color:var(--txt-mute);margin-top:1px}
+
+.top-stats{display:flex;gap:26px;margin-left:8px}
+.top-stat{display:flex;flex-direction:column;line-height:1.15}
+.top-stat .k{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;color:var(--txt-faint);text-transform:uppercase}
+.top-stat .v{font-family:var(--tech);font-size:16px;font-weight:600;color:var(--txt)}
+.top-stat .v.cy{color:var(--cyan);text-shadow:var(--glow-cyan-soft)}
+
+.spacer{flex:1}
+.status-pill{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:1px;color:var(--txt-mute);padding:6px 12px;border:1px solid var(--line);border-radius:20px;background:var(--bg-panel)}
+.status-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:var(--glow-cyan);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.clock{font-family:var(--mono);font-size:13px;color:var(--txt-strong);letter-spacing:1px}
+
+/* ---------- SIDEBAR ---------- */
+.sidebar{
+  border-right:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(9,14,22,.9),rgba(5,8,13,.6));
+  display:flex;flex-direction:column;align-items:center;padding:18px 0;gap:8px;
+}
+.nav-btn{
+  width:50px;height:50px;border:none;background:transparent;cursor:pointer;
+  color:var(--txt-mute);display:grid;place-items:center;position:relative;
+  border-radius:var(--r);transition:color .25s var(--ease),background .25s var(--ease);
+}
+.nav-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7}
+.nav-btn:hover{color:var(--cyan);background:rgba(55,224,212,.06)}
+.nav-btn.active{color:var(--cyan-bright)}
+.nav-btn.active::before{content:"";position:absolute;left:-1px;top:12px;bottom:12px;width:3px;background:var(--cyan);border-radius:3px;box-shadow:var(--glow-cyan)}
+.nav-btn .tip{position:absolute;left:58px;white-space:nowrap;background:var(--bg-elev);border:1px solid var(--line);padding:5px 10px;border-radius:4px;font-family:var(--mono);font-size:10.5px;color:var(--txt);opacity:0;transform:translateX(-6px);pointer-events:none;transition:.2s;z-index:20}
+.nav-btn:hover .tip{opacity:1;transform:translateX(0)}
+.side-foot{margin-top:auto;font-family:var(--mono);font-size:8.5px;color:var(--txt-faint);writing-mode:vertical-rl;letter-spacing:2px}
+
+/* ---------- MAIN / SECTIONS ---------- */
+.main{position:relative}
+.section{position:absolute;inset:0;padding:30px 38px;overflow-y:auto;opacity:0;transform:translateY(14px);pointer-events:none;transition:opacity .4s var(--ease),transform .4s var(--ease)}
+.section.active{opacity:1;transform:none;pointer-events:auto}
+.sec-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:26px}
+.sec-head .idx{font-family:var(--mono);font-size:12px;color:var(--cyan);letter-spacing:2px}
+.sec-head h1{font-family:var(--tech);font-size:30px;font-weight:700;color:var(--txt-strong);letter-spacing:1px}
+.sec-head h1 span{color:var(--txt-mute);font-weight:500;font-size:16px;margin-left:10px;font-family:var(--mono)}
+.sec-line{flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+
+/* ============================================================
+   PANEL BASE (HUD card with clipped corner + glow edge)
+   ============================================================ */
+.panel{
+  position:relative;background:linear-gradient(160deg,var(--bg-panel),var(--bg-panel-2));
+  border:1px solid var(--line);clip-path:var(--clip);padding:20px 22px;
+}
+.panel::before{content:"";position:absolute;left:0;top:0;width:42px;height:2px;background:var(--cyan);box-shadow:var(--glow-cyan)}
+.panel .ph{display:flex;align-items:center;gap:9px;margin-bottom:16px}
+.panel .ph .tag{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--cyan);border:1px solid var(--cyan-dim);padding:2px 7px;border-radius:3px}
+.panel .ph .ttl{font-family:var(--tech);font-size:15px;font-weight:600;color:var(--txt-strong);letter-spacing:1px}
+.panel .ph .rule{flex:1;height:1px;background:var(--line-soft)}
+
+.grid-2{display:grid;grid-template-columns:1.35fr 1fr;gap:22px}
+.grid-profiles{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+
+/* ============================================================
+   DASHBOARD — current display + live controls (single, no multi)
+   ============================================================ */
+.active-display{position:relative;height:300px;border:1px dashed var(--line);border-radius:6px;background:radial-gradient(circle at 50% 45%,rgba(55,224,212,.07),transparent 70%);display:grid;place-items:center;overflow:hidden}
+.ad-screen{position:relative;width:66%;height:72%;border:1.5px solid var(--cyan);border-radius:6px;background:linear-gradient(160deg,rgba(55,224,212,.10),rgba(12,18,28,.6));box-shadow:var(--glow-cyan-soft);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;overflow:hidden;transition:.4s var(--ease)}
+.ad-screen::after{content:"";position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);top:-2px;animation:scan 3.2s linear infinite;opacity:.8}
+@keyframes scan{0%{top:-2px}100%{top:100%}}
+.ad-badge{position:absolute;top:10px;left:12px;font-family:var(--mono);font-size:8.5px;letter-spacing:1px;color:var(--bg-void);background:var(--cyan);padding:2px 7px;border-radius:2px}
+.ad-model{font-family:var(--tech);font-weight:700;font-size:21px;color:var(--cyan-bright);letter-spacing:.5px;text-align:center;padding:0 10px}
+.ad-spec{font-family:var(--mono);font-size:10.5px;color:var(--txt-mute);letter-spacing:1px;margin-top:2px;transition:.3s}
+.ad-sub{font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:1px}
+
+/* live control chips */
+.ctrl-block{margin-bottom:20px}
+.ctrl-block:last-of-type{margin-bottom:22px}
+.ctrl-label{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.ctrl-label>span:first-child{font-family:var(--tech);font-size:15px;font-weight:600;color:var(--txt-strong);letter-spacing:1px}
+.ctrl-val{font-family:var(--mono);font-size:13px;color:var(--cyan);letter-spacing:1px;text-shadow:var(--glow-cyan-soft);transition:.3s}
+.chip-group{display:flex;flex-wrap:wrap;gap:9px}
+.chip{font-family:var(--mono);font-size:11px;letter-spacing:.5px;color:var(--txt-mute);background:var(--bg-elev);border:1px solid var(--line);border-radius:3px;padding:8px 13px;cursor:pointer;transition:.22s var(--ease)}
+.chip:hover{color:var(--cyan);border-color:var(--cyan-dim);background:rgba(55,224,212,.06)}
+.chip.sel{color:var(--cyan-bright);border-color:var(--cyan);background:rgba(55,224,212,.12);box-shadow:var(--glow-cyan-soft)}
+
+/* stat strip — resolution + refresh only */
+.stat-row{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:22px}
+.stat{background:var(--bg-elev);border:1px solid var(--line-soft);border-radius:4px;padding:13px 14px;position:relative;overflow:hidden}
+.stat .k{font-family:var(--mono);font-size:9.5px;letter-spacing:1.5px;color:var(--txt-mute);text-transform:uppercase}
+.stat .v{font-family:var(--disp);font-size:24px;font-weight:700;color:var(--txt-strong);margin-top:4px}
+.stat .v.cy{color:var(--cyan);text-shadow:var(--glow-cyan-soft)}
+.stat .u{font-family:var(--tech);font-size:12px;color:var(--txt-mute);margin-left:3px}
+.stat::after{content:"";position:absolute;right:-10px;bottom:-10px;width:46px;height:46px;border:1px solid var(--cyan-dim);border-radius:50%;opacity:.25}
+
+/* ============================================================
+   PROFILE CARDS
+   ============================================================ */
+.pcard{position:relative;background:linear-gradient(160deg,var(--bg-panel),var(--bg-panel-2));border:1px solid var(--line);border-radius:5px;padding:16px 17px;overflow:hidden;transition:.3s var(--ease);cursor:pointer}
+.pcard:hover{transform:translateY(-3px);border-color:var(--cyan-dim);box-shadow:0 10px 30px -12px rgba(55,224,212,.4)}
+.pcard.active{border-color:var(--cyan);box-shadow:var(--glow-cyan-soft)}
+.pcard .corner{position:absolute;top:0;right:0;border-width:0 26px 26px 0;border-style:solid;border-color:transparent var(--cyan) transparent transparent;opacity:0;transition:.3s}
+.pcard.active .corner{opacity:1}
+.pcard .picon{width:38px;height:38px;border:1px solid var(--cyan-dim);border-radius:5px;display:grid;place-items:center;color:var(--cyan);margin-bottom:11px;background:rgba(55,224,212,.05)}
+.pcard .picon svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6}
+.pcard h3{font-family:var(--tech);font-size:18px;font-weight:700;color:var(--txt-strong);letter-spacing:.5px}
+.pcard .meta{display:flex;gap:14px;font-family:var(--mono);font-size:10px;color:var(--txt-mute);margin:6px 0 14px}
+.pcard .meta b{color:var(--cyan);font-weight:500}
+.btn{width:100%;border:1px solid var(--cyan-dim);background:rgba(55,224,212,.07);color:var(--cyan-bright);font-family:var(--tech);font-weight:600;font-size:13px;letter-spacing:2px;padding:9px;border-radius:3px;cursor:pointer;transition:.25s;position:relative;overflow:hidden}
+.btn:hover{background:var(--cyan);color:var(--bg-void);box-shadow:var(--glow-cyan)}
+.btn:active{transform:scale(.98)}
+.btn.applied{background:transparent;border-color:var(--cyan);color:var(--cyan);cursor:default}
+.btn.applied:hover{box-shadow:none;color:var(--cyan)}
+
+/* ============================================================
+   QUICK SWITCH
+   ============================================================ */
+.mode-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.mode{border:1px solid var(--line);border-radius:5px;padding:18px;display:flex;align-items:center;gap:14px;background:var(--bg-elev);cursor:pointer;transition:.25s var(--ease)}
+.mode:hover{border-color:var(--cyan-dim);background:rgba(55,224,212,.05)}
+.mode.sel{border-color:var(--cyan);box-shadow:var(--glow-cyan-soft)}
+.mode .mi{width:42px;height:42px;flex:0 0 auto;display:grid;place-items:center;color:var(--cyan);border:1px solid var(--cyan-dim);border-radius:5px}
+.mode .mi svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6}
+.mode .mt{font-family:var(--tech);font-size:16px;font-weight:600;color:var(--txt-strong)}
+.mode .md{font-size:11px;color:var(--txt-mute);margin-top:2px}
+
+/* ============================================================
+   DISPLAYS LIST
+   ============================================================ */
+.dlist{display:flex;flex-direction:column;gap:12px}
+.drow{display:flex;align-items:center;gap:16px;border:1px solid var(--line);border-radius:5px;padding:14px 16px;background:var(--bg-panel);transition:.25s}
+.drow:hover{border-color:var(--cyan-dim)}
+.drow .dnum{width:40px;height:40px;flex:0 0 auto;border:1.5px solid var(--cyan);border-radius:50%;display:grid;place-items:center;font-family:var(--disp);font-weight:700;color:var(--cyan);box-shadow:var(--glow-cyan-soft)}
+.drow .dinfo{flex:1}
+.drow .dname{font-family:var(--tech);font-size:16px;font-weight:600;color:var(--txt-strong)}
+.drow .dspec{font-family:var(--mono);font-size:10.5px;color:var(--txt-mute);margin-top:3px}
+.drow .dstate{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:4px 10px;border-radius:20px;border:1px solid var(--cyan-dim);color:var(--cyan)}
+.drow .dstate.off{color:var(--txt-mute);border-color:var(--line)}
+
+/* ============================================================
+   SETTINGS
+   ============================================================ */
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:15px 4px;border-bottom:1px solid var(--line-soft)}
+.set-row:last-child{border-bottom:none}
+.set-row .sl{font-family:var(--tech);font-size:15px;color:var(--txt-strong);font-weight:600}
+.set-row .sd{font-size:11px;color:var(--txt-mute);margin-top:3px;max-width:380px}
+.toggle{width:50px;height:26px;border-radius:20px;background:var(--bg-elev);border:1px solid var(--line);position:relative;cursor:pointer;transition:.3s;flex:0 0 auto}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--txt-mute);transition:.3s}
+.toggle.on{background:rgba(var(--accent-rgb),.15);border-color:var(--cyan)}
+.toggle.on::after{left:26px;background:var(--cyan);box-shadow:var(--glow-cyan)}
+.range{width:200px;accent-color:var(--cyan)}
+
+/* settings two-column layout */
+.set-cols{display:grid;grid-template-columns:repeat(2,1fr);gap:22px;max-width:980px}
+.set-sub{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--txt-faint);text-transform:uppercase;margin:20px 0 11px;padding:4px 0 4px 10px;border-left:2px solid var(--cyan-dim)}
+.hud-themes{display:flex;flex-wrap:wrap;gap:10px}
+.hud-chip{display:flex;align-items:center;gap:8px;font-family:var(--tech);font-weight:600;font-size:13px;color:var(--txt);background:var(--bg-elev);border:1px solid var(--line);border-radius:3px;padding:8px 13px;cursor:pointer;transition:.22s var(--ease)}
+.hud-chip::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--hc);box-shadow:0 0 8px var(--hc)}
+.hud-chip:hover{border-color:var(--cyan-dim)}
+.hud-chip.sel{border-color:var(--cyan);color:var(--cyan-bright);box-shadow:var(--glow-cyan-soft)}
+.bg-block{display:flex;flex-direction:column;gap:12px}
+.upload-btn{display:flex;align-items:center;justify-content:center;gap:10px;font-family:var(--tech);font-weight:600;font-size:13px;letter-spacing:1px;color:var(--cyan-bright);background:rgba(var(--accent-rgb),.07);border:1px dashed var(--cyan-dim);border-radius:4px;padding:14px;cursor:pointer;transition:.25s}
+.upload-btn:hover{background:var(--cyan);color:var(--bg-void);border-color:var(--cyan)}
+.upload-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7}
+.restore-btn{display:flex;align-items:center;justify-content:center;gap:8px;font-family:var(--tech);font-weight:600;font-size:12px;letter-spacing:1px;color:var(--txt-mute);background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:10px;cursor:pointer;transition:.25s var(--ease)}
+.restore-btn:hover{color:var(--cyan-bright);border-color:var(--cyan-dim);box-shadow:var(--glow-cyan-soft)}
+.restore-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7}
+.bg-extract{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;color:var(--txt-mute);letter-spacing:.5px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:3px;background:var(--bg-elev)}
+.bg-extract .dot{width:12px;height:12px;border-radius:50%;background:var(--cyan);box-shadow:var(--glow-cyan)}
+/* custom uploaded background layer */
+.bg-custom{position:fixed;inset:0;z-index:-1;background-size:cover;background-position:center;opacity:0;transition:opacity .6s var(--ease)}
+.bg-custom.show{opacity:1}
+.bg-custom::after{content:"";position:absolute;inset:0;background:rgba(5,8,13,.62)}
+.field{background:var(--bg-elev);border:1px solid var(--line);color:var(--txt);font-family:var(--mono);font-size:12px;padding:8px 11px;border-radius:3px;width:220px;outline:none}
+.field:focus{border-color:var(--cyan);box-shadow:var(--glow-cyan-soft)}
+
+/* ============================================================
+   CUSTOM PROFILE BUILDER
+   ============================================================ */
+.add-btn{margin-left:14px;font-family:var(--tech);font-weight:600;font-size:13px;letter-spacing:1.5px;color:var(--cyan-bright);background:rgba(55,224,212,.08);border:1px solid var(--cyan-dim);padding:8px 14px;border-radius:3px;cursor:pointer;transition:.25s;white-space:nowrap}
+.add-btn:hover{background:var(--cyan);color:var(--bg-void);box-shadow:var(--glow-cyan)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
+.form-grid .fg-full{grid-column:1/-1}
+.form-grid label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:1.5px;color:var(--txt-mute);margin-bottom:6px;text-transform:uppercase}
+.form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
+.btn-ghost{border:1px solid var(--line);background:transparent;color:var(--txt-mute);font-family:var(--tech);font-weight:600;letter-spacing:1.5px;padding:9px 18px;border-radius:3px;cursor:pointer;transition:.25s}
+.btn-ghost:hover{border-color:var(--txt-mute);color:var(--txt)}
+.del{width:38px;flex:0 0 auto;border:1px solid var(--line);background:transparent;color:var(--txt-mute);border-radius:3px;cursor:pointer;font-size:13px;transition:.25s}
+.del:hover{border-color:var(--red);color:var(--red)}
+.empty-hint{margin-top:22px;text-align:center;font-family:var(--mono);font-size:12px;letter-spacing:1px;color:var(--txt-faint);border:1px dashed var(--line);border-radius:5px;padding:34px}
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+.toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,30px);z-index:50;background:rgba(12,18,28,.96);border:1px solid var(--cyan);clip-path:var(--clip);padding:13px 22px;display:flex;align-items:center;gap:12px;opacity:0;pointer-events:none;transition:.4s var(--ease);box-shadow:var(--glow-cyan-soft)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast .ti{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:var(--glow-cyan);animation:pulse 1.5s infinite}
+.toast .tx{font-family:var(--tech);font-size:14px;color:var(--txt-strong);letter-spacing:.5px}
+.toast .tx b{color:var(--cyan)}
+
+.boot{position:fixed;inset:0;z-index:80;background:var(--bg-void);display:grid;place-items:center;transition:opacity .6s var(--ease)}
+.boot.hide{opacity:0;pointer-events:none}
+.boot .ring{width:54px;height:54px;border:2px solid var(--line);border-top-color:var(--cyan);border-radius:50%;animation:spin .9s linear infinite}
+.boot .bt{position:absolute;bottom:38%;font-family:var(--mono);font-size:11px;letter-spacing:3px;color:var(--txt-mute);margin-top:70px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media(max-width:920px){
+  .grid-2{grid-template-columns:1fr}
+  .grid-profiles{grid-template-columns:1fr}
+  .set-cols{grid-template-columns:1fr}
+  .top-stats{display:none}
+}
+</style>
+</head>
+<body>
+<canvas id="particles"></canvas>
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+<div class="bg-custom" id="bgCustom"></div>
+
+<div class="boot" id="boot">
+  <div style="position:relative;display:grid;place-items:center">
+    <div class="ring"></div>
+    <div class="bt">INITIALIZING DISPLAY SUBSYSTEM</div>
+  </div>
+</div>
+
+<div class="app">
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark"></div>
+      <div>
+        <div class="title">DISPLAY<b>SWITCHER</b></div>
+        <div class="sub">END · FIELD TERMINAL v2.0</div>
+      </div>
+    </div>
+    <div class="top-stats">
+      <div class="top-stat"><span class="k">Active Profile</span><span class="v cy" id="topProfile">未选择</span></div>
+      <div class="top-stat"><span class="k">Displays</span><span class="v" id="topDisp">2 / 2</span></div>
+      <div class="top-stat"><span class="k">GPU</span><span class="v">RTX 4070</span></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="status-pill"><span class="dot"></span>SYSTEM ONLINE</div>
+    <div class="clock" id="clock">--:--:--</div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <button class="nav-btn active" data-sec="dashboard">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="tip">控制台 / DASHBOARD</span>
+    </button>
+    <button class="nav-btn" data-sec="profiles">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+      <span class="tip">配置方案 / PROFILES</span>
+    </button>
+    <button class="nav-btn" data-sec="settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14 3h-4l-.6 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2L10 21h4l.6-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2Z"/></svg>
+      <span class="tip">设置 / SETTINGS</span>
+    </button>
+    <div class="side-foot">END·FIELD UI</div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <section class="section active" id="dashboard">
+      <div class="sec-head">
+        <span class="idx">// 01</span>
+        <h1>控制台<span>CONTROL DECK</span></h1>
+        <div class="sec-line"></div>
+      </div>
+
+      <div class="grid-2">
+        <!-- single current display -->
+        <div class="panel">
+          <div class="ph"><span class="tag">ACTIVE</span><span class="ttl">当前显示设备</span><div class="rule"></div></div>
+          <div class="active-display">
+            <div class="ad-screen" id="adScreen">
+              <span class="ad-badge">PRIMARY</span>
+              <div class="ad-model" id="adModel">LG UltraGear 27GP850</div>
+              <div class="ad-spec" id="adSpec">2560 × 1440 · 165 Hz</div>
+              <div class="ad-sub" id="adStatus">● 运行中 · 主显示器</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- live controls -->
+        <div class="panel">
+          <div class="ph"><span class="tag">CTRL</span><span class="ttl">实时参数调节</span><div class="rule"></div></div>
+
+          <div class="ctrl-block">
+            <div class="ctrl-label"><span>分辨率</span><span class="ctrl-val" id="resVal">2560 × 1440</span></div>
+            <div class="chip-group" id="resChips">
+              <button class="chip sel" data-res="2560 × 1440">2560×1440</button>
+              <button class="chip" data-res="1920 × 1080">1920×1080</button>
+              <button class="chip" data-res="3840 × 2160">3840×2160</button>
+              <button class="chip" data-res="3440 × 1440">3440×1440</button>
+            </div>
+          </div>
+
+          <div class="ctrl-block">
+            <div class="ctrl-label"><span>刷新率</span><span class="ctrl-val" id="hzVal">165 Hz</span></div>
+            <div class="chip-group" id="hzChips">
+              <button class="chip" data-hz="60">60 Hz</button>
+              <button class="chip" data-hz="75">75 Hz</button>
+              <button class="chip" data-hz="120">120 Hz</button>
+              <button class="chip" data-hz="144">144 Hz</button>
+              <button class="chip sel" data-hz="165">165 Hz</button>
+            </div>
+          </div>
+
+          <button class="btn" id="applyDisplay">应用当前显示设置</button>
+        </div>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat"><div class="k">Resolution</div><div class="v cy" id="statRes">2560 × 1440</div></div>
+        <div class="stat"><div class="k">Refresh Rate</div><div class="v" id="statHz" data-count="165">0<span class="u">Hz</span></div></div>
+      </div>
+    </section>
+
+    <!-- PROFILES -->
+    <section class="section" id="profiles">
+      <div class="sec-head">
+        <span class="idx">// 02</span>
+        <h1>配置方案<span>PROFILES</span></h1>
+        <div class="sec-line"></div>
+        <button class="add-btn" id="addProfileBtn">+ 新建方案</button>
+      </div>
+      <div class="panel" id="profileForm" style="display:none;margin-bottom:18px">
+        <div class="ph"><span class="tag">NEW</span><span class="ttl">新建自定义方案</span><div class="rule"></div></div>
+        <div class="form-grid">
+          <div class="fg-full"><label>方案名称</label><input class="field" id="pfName" placeholder="例如：观影模式"></div>
+          <div><label>分辨率</label><select class="field" id="pfRes"><option>2560×1440</option><option>1920×1080</option><option>3840×2160</option><option>3440×1440</option></select></div>
+          <div><label>刷新率</label><select class="field" id="pfHz"><option>60Hz</option><option>75Hz</option><option>120Hz</option><option>144Hz</option><option>165Hz</option></select></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-ghost" id="cancelProfile">取消</button>
+          <button class="btn" id="saveProfile" style="width:auto;padding:9px 22px">保存方案</button>
+        </div>
+      </div>
+      <div class="grid-profiles" id="profileGrid"></div>
+      <div class="empty-hint" id="emptyHint">暂无方案 · 点击右上角「新建方案」自定义你的显示配置</div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="section" id="settings">
+      <div class="sec-head">
+        <span class="idx">// 03</span>
+        <h1>设置<span>SYSTEM CONFIG</span></h1>
+        <div class="sec-line"></div>
+      </div>
+      <div class="set-cols">
+        <!-- 偏好 -->
+        <div class="panel">
+          <div class="ph"><span class="tag">PREF</span><span class="ttl">偏好</span><div class="rule"></div></div>
+          <div class="set-row"><div><div class="sl">开机自启</div><div class="sd">系统登录后自动加载终端至系统托盘</div></div><div class="toggle on" data-tg></div></div>
+          <div class="set-row"><div><div class="sl">切换时确认</div><div class="sd">应用配置方案前弹出二次确认</div></div><div class="toggle" data-tg></div></div>
+        </div>
+
+        <!-- 外观 -->
+        <div class="panel">
+          <div class="ph"><span class="tag">LOOK</span><span class="ttl">外观</span><div class="rule"></div></div>
+          <div class="set-row"><div><div class="sl">粒子特效</div><div class="sd">背景能量粒子与扫描线动效</div></div><div class="toggle on" data-tg></div></div>
+          <div class="set-row"><div><div class="sl">辉光强度</div><div class="sd">界面高光与霓虹描边的亮度</div></div><input class="range" type="range" min="0" max="100" value="70" id="glowRange" /></div>
+
+          <div class="set-sub">HUD 配色</div>
+          <div class="hud-themes" id="hudThemes">
+            <button class="hud-chip sel" data-hue="186" style="--hc:#37e0d4"><span>青蓝</span></button>
+            <button class="hud-chip" data-hue="150" style="--hc:#3fe08a"><span>翠绿</span></button>
+            <button class="hud-chip" data-hue="275" style="--hc:#a06bff"><span>紫晶</span></button>
+            <button class="hud-chip" data-hue="28" style="--hc:#ff9433"><span>琥珀</span></button>
+            <button class="hud-chip" data-hue="348" style="--hc:#ff5d7a"><span>绯红</span></button>
+          </div>
+
+          <div class="set-sub">背景</div>
+          <div class="bg-block">
+            <label class="upload-btn">
+              <input type="file" id="bgUpload" accept="image/*" hidden />
+              <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L8 8m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+              <span>上传自定义背景图</span>
+            </label>
+            <button class="restore-btn" id="bgRestore">恢复默认背景</button>
+            <div class="bg-extract" id="bgExtract" style="display:none">
+              <span class="dot" id="extractDot"></span>
+              <span id="extractTxt">已从背景提取主色 · HUD 自动匹配</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"><span class="ti"></span><span class="tx" id="toastTx"></span></div>
+
+<script>
+/* global accent state (driven by appearance settings) */
+let PARTICLE_RGB=[55,224,212];
+
+/* ============================================================
+   1. PARTICLE FIELD (sci-fi dust + constellation links)
+   ============================================================ */
+(function(){
+  const c=document.getElementById('particles'),x=c.getContext('2d');
+  let w,h,ps=[],raf;
+  function size(){w=c.width=innerWidth;h=c.height=innerHeight;}
+  function build(){
+    const n=Math.min(90,Math.floor(w*h/16000));
+    ps=[];for(let i=0;i<n;i++)ps.push({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.25,r:Math.random()*1.6+.5,a:Math.random()*.5+.2});
+  }
+  function draw(){
+    x.clearRect(0,0,w,h);
+    for(let i=0;i<ps.length;i++){
+      const p=ps[i];p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0||p.x>w)p.vx*=-1;if(p.y<0||p.y>h)p.vy*=-1;
+      x.beginPath();x.arc(p.x,p.y,p.r,0,7);x.fillStyle='rgba('+PARTICLE_RGB[0]+','+PARTICLE_RGB[1]+','+PARTICLE_RGB[2]+','+p.a+')';x.fill();
+      for(let j=i+1;j<ps.length;j++){
+        const q=ps[j],dx=p.x-q.x,dy=p.y-q.y,d=dx*dx+dy*dy;
+        if(d<13000){x.beginPath();x.moveTo(p.x,p.y);x.lineTo(q.x,q.y);x.strokeStyle='rgba('+PARTICLE_RGB[0]+','+PARTICLE_RGB[1]+','+PARTICLE_RGB[2]+','+(0.10*(1-d/13000))+')';x.lineWidth=.6;x.stroke();}
+      }
+    }
+    raf=requestAnimationFrame(draw);
+  }
+  size();build();draw();
+  addEventListener('resize',()=>{size();build();});
+})();
+
+/* ============================================================
+   2. CLOCK
+   ============================================================ */
+setInterval(()=>{const d=new Date();document.getElementById('clock').textContent=d.toTimeString().slice(0,8);},1000);
+
+/* ============================================================
+   3. NAVIGATION
+   ============================================================ */
+const navBtns=document.querySelectorAll('.nav-btn');
+navBtns.forEach(b=>b.addEventListener('click',()=>{
+  navBtns.forEach(n=>n.classList.remove('active'));
+  b.classList.add('active');
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.getElementById(b.dataset.sec).classList.add('active');
+}));
+
+/* ============================================================
+   4. TOAST
+   ============================================================ */
+let toastT;
+function toast(msg){
+  const t=document.getElementById('toast');
+  document.getElementById('toastTx').innerHTML=msg;
+  t.classList.add('show');clearTimeout(toastT);
+  toastT=setTimeout(()=>t.classList.remove('show'),2600);
+}
+
+/* ============================================================
+   4.5 CONSOLE LIVE CONTROLS (single active display)
+   ============================================================ */
+const resChips=document.getElementById('resChips');
+const hzChips=document.getElementById('hzChips');
+const resVal=document.getElementById('resVal');
+const hzVal=document.getElementById('hzVal');
+const statRes=document.getElementById('statRes');
+const statHz=document.getElementById('statHz');
+const adSpec=document.getElementById('adSpec');
+let pendingRes='2560 × 1440',pendingHz=165;
+
+resChips.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+  resChips.querySelectorAll('.chip').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel');
+  pendingRes=c.dataset.res;
+  resVal.textContent=pendingRes;
+  toast('分辨率待应用 → <b>'+pendingRes+'</b>');
+}));
+hzChips.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+  hzChips.querySelectorAll('.chip').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel');
+  pendingHz=+c.dataset.hz;
+  hzVal.textContent=pendingHz+' Hz';
+  toast('刷新率待应用 → <b>'+pendingHz+' Hz</b>');
+}));
+document.getElementById('applyDisplay').addEventListener('click',()=>{
+  statRes.textContent=pendingRes;
+  statHz.innerHTML=pendingHz+'<span class="u">Hz</span>';
+  adSpec.textContent=pendingRes+' · '+pendingHz+' Hz';
+  toast('显示设置已写入 · <b>'+pendingRes+' @ '+pendingHz+'Hz</b>');
+});
+
+/* ============================================================
+   5. CUSTOM PROFILES (user-defined, no presets)
+   ============================================================ */
+const pg=document.getElementById('profileGrid');
+const emptyHint=document.getElementById('emptyHint');
+const form=document.getElementById('profileForm');
+const addBtn=document.getElementById('addProfileBtn');
+let customCount=0;
+
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function checkEmpty(){emptyHint.style.display=pg.children.length?'none':'block';}
+
+addBtn.addEventListener('click',()=>{
+  const open=form.style.display==='block';
+  form.style.display=open?'none':'block';
+});
+document.getElementById('cancelProfile').addEventListener('click',()=>{form.style.display='none';form.reset();});
+document.getElementById('saveProfile').addEventListener('click',()=>{
+  const name=(form.querySelector('#pfName').value||'自定义方案 '+(++customCount)).trim();
+  const res=form.querySelector('#pfRes').value;
+  const hz=form.querySelector('#pfHz').value;
+  const el=document.createElement('div');
+  el.className='pcard';
+  el.innerHTML=`<div class="corner"></div>
+    <div class="picon"><svg viewBox="0 0 24 24"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></svg></div>
+    <h3>${escapeHtml(name)}</h3>
+    <div class="meta"><span>分辨率 <b>${res}</b></span><span>刷新 <b>${hz}</b></span></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1">应用方案</button>
+      <button class="del" title="删除">✕</button>
+    </div>`;
+  el.querySelector('.btn').addEventListener('click',e=>{e.stopPropagation();applyProfile(name,el);});
+  el.querySelector('.del').addEventListener('click',e=>{e.stopPropagation();el.remove();checkEmpty();toast('方案已删除');});
+  pg.appendChild(el);checkEmpty();
+  form.style.display='none';form.reset();
+  toast('已创建方案 <b>'+escapeHtml(name)+'</b>');
+});
+function applyProfile(name,el){
+  document.querySelectorAll('#profileGrid .pcard').forEach(c=>{c.classList.remove('active');const b=c.querySelector('.btn');b.className='btn';b.style.flex='1';b.textContent='应用方案';});
+  el.classList.add('active');const b=el.querySelector('.btn');b.className='btn applied';b.textContent='● 已启用';
+  document.getElementById('topProfile').textContent=name;
+  toast('配置方案 <b>'+escapeHtml(name)+'</b> 已写入显示子系统');
+}
+checkEmpty();
+
+/* ============================================================
+   7. TOGGLES
+   ============================================================ */
+document.querySelectorAll('[data-tg]').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('on')));
+
+/* ============================================================
+   7.5 SETTINGS — HUD accent + glow + custom background + color extract
+   ============================================================ */
+const rootStyle=document.documentElement.style;
+
+/* apply glow intensity (0..1) — drives neon shadows + bg-glow opacity */
+function applyGlow(op){
+  rootStyle.setProperty('--glow-op',op);
+  rootStyle.setProperty('--glow-cyan','0 0 18px rgba(var(--accent-rgb),'+(0.18+op*0.34).toFixed(3)+')');
+  rootStyle.setProperty('--glow-cyan-soft','0 0 8px rgba(var(--accent-rgb),'+(0.06+op*0.22).toFixed(3)+')');
+}
+
+/* set the global accent color (rgb) — recolors entire HUD */
+function setAccent(r,g,b){
+  const [h,s]=rgbToHsl(r,g,b);
+  const sat=Math.max(45,Math.min(100,s));
+  rootStyle.setProperty('--accent-rgb',r+','+g+','+b);
+  rootStyle.setProperty('--cyan','hsl('+h+', '+sat+'%, 58%)');
+  rootStyle.setProperty('--cyan-bright','hsl('+h+', '+sat+'%, 74%)');
+  rootStyle.setProperty('--cyan-dim','hsl('+h+', '+Math.round(sat*0.85)+'%, 34%)');
+  PARTICLE_RGB=[Math.round(r*0.9),Math.round(g*0.9),Math.round(b*0.9)];
+}
+
+function rgbToHsl(r,g,b){
+  r/=255;g/=255;b/=255;
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
+  let h,s,l=(mx+mn)/2;
+  if(mx===mn){h=s=0;}
+  else{
+    const d=mx-mn;
+    s=l>.5?d/(2-mx-mn):d/(mx+mn);
+    switch(mx){
+      case r:h=(g-b)/d+(g<b?6:0);break;
+      case g:h=(b-r)/d+2;break;
+      default:h=(r-g)/d+4;
+    }
+    h*=60;
+  }
+  return [Math.round(h),Math.round(s*100),Math.round(l*100)];
+}
+function hslToRgb(h,s,l){
+  h/=360;s/=100;l/=100;let r,g,b;
+  if(s===0){r=g=b=l;}
+  else{
+    const hue2=(p,q,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;};
+    const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;
+    r=hue2(p,q,h+1/3);g=hue2(p,q,h);b=hue2(p,q,h-1/3);
+  }
+  return [Math.round(r*255),Math.round(g*255),Math.round(b*255)];
+}
+
+/* HUD color presets */
+const hudThemes=document.getElementById('hudThemes');
+hudThemes.querySelectorAll('.hud-chip').forEach(c=>c.addEventListener('click',()=>{
+  hudThemes.querySelectorAll('.hud-chip').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel');
+  const [r,g,b]=hslToRgb(c.dataset.hue,72,58);
+  setAccent(r,g,b);
+  toast('HUD 配色 → <b>'+c.textContent.trim()+'</b>');
+}));
+
+/* glow intensity slider */
+const glowRange=document.getElementById('glowRange');
+glowRange.addEventListener('input',()=>applyGlow(glowRange.value/100));
+
+/* custom background upload + dominant-color extraction → auto-match HUD */
+const bgCustom=document.getElementById('bgCustom');
+document.getElementById('bgUpload').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const url=ev.target.result;
+    bgCustom.classList.add('show');
+    bgCustom.style.backgroundImage='url('+url+')';
+    const img=new Image();
+    img.onload=()=>{
+      const [r,g,b]=extractDominant(img);
+      setAccent(r,g,b);
+      const dot=document.getElementById('extractDot');
+      dot.style.background='rgb('+r+','+g+','+b+')';
+      dot.style.boxShadow='0 0 8px rgb('+r+','+g+','+b+')';
+      document.getElementById('bgExtract').style.display='flex';
+      toast('已应用背景 · HUD 自动匹配主色');
+    };
+    img.src=url;
+  };
+  reader.readAsDataURL(f);
+});
+
+/* restore default model background */
+document.getElementById('bgRestore').addEventListener('click',()=>{
+  bgCustom.classList.remove('show');
+  bgCustom.style.backgroundImage='';
+  document.getElementById('bgExtract').style.display='none';
+  setAccent(55,224,212);
+  toast('已恢复默认模型背景');
+});
+function extractDominant(img){
+  const c=document.createElement('canvas');c.width=40;c.height=40;
+  const ctx=c.getContext('2d');ctx.drawImage(img,0,0,40,40);
+  const d=ctx.getImageData(0,0,40,40).data;
+  let r=0,g=0,b=0,n=0;
+  for(let i=0;i<d.length;i+=4){
+    const R=d[i],G=d[i+1],B=d[i+2],A=d[i+3];
+    if(A<125)continue;
+    const mx=Math.max(R,G,B),mn=Math.min(R,G,B);
+    if(mx<36||mn>220)continue; // skip near-black / near-white
+    r+=R;g+=G;b+=B;n++;
+  }
+  if(!n){for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2];n++;}}
+  return [Math.round(r/n),Math.round(g/n),Math.round(b/n)];
+}
+
+/* init glow */
+applyGlow(0.7);
+
+/* ============================================================
+   8. COUNT-UP
+   ============================================================ */
+function countUp(){
+  document.querySelectorAll('[data-count]').forEach(el=>{
+    const target=+el.dataset.count,unit=el.querySelector('.u')?el.querySelector('.u').outerHTML:'';
+    let cur=0,step=target/40;
+    const t=setInterval(()=>{cur+=step;if(cur>=target){cur=target;clearInterval(t);}el.innerHTML=Math.floor(cur).toLocaleString()+unit;},22);
+  });
+}
+countUp();
+
+/* ============================================================
+   9. BOOT
+   ============================================================ */
+setTimeout(()=>document.getElementById('boot').classList.add('hide'),1300);
+</script>
+</body>
+</html>

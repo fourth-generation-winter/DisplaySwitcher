@@ -1,0 +1,4 @@
+# DisplaySwitcher build dependencies
+# Tested on Python 3.13 (Windows)
+wxPython==4.3.1
+pyinstaller==6.22.1
