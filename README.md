@@ -22,7 +22,7 @@
 
 ## 📦 下载与安装
 
-从 [Releases](https://github.com/Asepacehpe/DisplaySwitcher/releases) 下载最新 `DisplaySwitcher.exe`，双击运行即可（需 Windows 10 / 11 自带或已安装的 Microsoft Edge WebView2 运行时）。
+从 [Releases](https://github.com/fourth-generation-winter/DisplaySwitcher/releases) 下载最新 `DisplaySwitcher.exe`，双击运行即可（需 Windows 10 / 11 自带或已安装的 Microsoft Edge WebView2 运行时）。
 
 > 若系统未安装 WebView2 运行时，程序会自动用默认浏览器打开控制台 UI，仍可正常使用。
 
@@ -66,4 +66,4 @@ pyinstaller DisplaySwitcher.spec --name DisplaySwitcher
 
 ## 📄 许可证
 
-MIT © 2026 [@Asepacehpe](https://github.com/Asepacehpe)
+MIT © 2026 [@Asepacehpe](https://github.com/fourth-generation-winter)
