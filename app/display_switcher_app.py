@@ -10,7 +10,7 @@ DisplaySwitcher // CONTROL DECK
 命令行 (无界面直切):
     DisplaySwitcher.exe --switch 1920 1080 60
 """
-import os, sys, json, uuid, threading, socket, time, ctypes, functools, http.server
+import os, sys, json, uuid, threading, socket, time, ctypes, functools, http.server, urllib.request, urllib.error, ssl
 import ctypes.wintypes  # 显式导入，确保冻结( PyInstaller )后 ctypes.wintypes 仍可用
 
 # ----------------------------------------------------------------------------
@@ -627,6 +627,72 @@ def _webroot():
         base = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base, "webroot")
 
+# ----------------------------------------------------------------------------
+# 5.5 检查更新 (GitHub Release)
+# ----------------------------------------------------------------------------
+APP_VERSION = "4.0"
+GITHUB_REPO = "fourth-generation-winter/DisplaySwitcher"
+
+def _parse_ver(s):
+    """'v3.0' / '3.0' -> (3, 0)。仅取前两段数字用于比较。"""
+    s = (s or "").lstrip("vV").strip()
+    parts = []
+    for seg in s.split("."):
+        num = ""
+        for ch in seg:
+            if ch.isdigit():
+                num += ch
+            else:
+                break
+        parts.append(int(num) if num else 0)
+    while len(parts) < 2:
+        parts.append(0)
+    return tuple(parts[:2])
+
+def _github_open(url, timeout=8):
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "DisplaySwitcher/%s" % APP_VERSION,
+                      "Accept": "application/vnd.github+json"})
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.URLError as e:
+        # Windows 上个别环境 OpenSSL 默认证书链缺失，回退为不校验（仅用于公开 Release 信息）
+        if isinstance(getattr(e, "reason", None), ssl.SSLError):
+            return urllib.request.urlopen(req, timeout=timeout,
+                                          context=ssl._create_unverified_context())
+        raise
+
+def check_for_update():
+    try:
+        with _github_open("https://api.github.com/repos/%s/releases/latest" % GITHUB_REPO) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        tag = data.get("tag_name") or ""
+        latest = _parse_ver(tag)
+        current = _parse_ver(APP_VERSION)
+        assets = data.get("assets") or []
+        dl = (assets[0].get("browser_download_url") if assets else None) or data.get("html_url")
+        return {
+            "ok": True,
+            "current": "v" + APP_VERSION,
+            "latest": tag or ("v" + APP_VERSION),
+            "update_available": latest > current,
+            "download_url": dl,
+            "release_url": data.get("html_url"),
+            "name": data.get("name"),
+            "published_at": data.get("published_at"),
+            "notes": (data.get("body") or "")[:2000],
+        }
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return {"ok": True, "current": "v" + APP_VERSION, "latest": None,
+                    "update_available": False, "message": "暂无已发布的 Release"}
+        if e.code == 403:
+            return {"ok": False, "message": "GitHub API 速率限制，请稍后再试"}
+        return {"ok": False, "message": "GitHub 返回错误 %s" % e.code}
+    except Exception as e:
+        return {"ok": False, "message": "无法连接 GitHub：%s" % str(e)[:120]}
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -654,6 +720,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._json(200, get_state())
         if p == "/api/system":
             return self._json(200, get_system_info())
+        if p == "/api/update/check":
+            return self._json(200, check_for_update())
         if p == "/api/settings":
             return self._json(200, cfg["settings"])
         if p.startswith("/api/window/"):
@@ -1023,11 +1091,51 @@ def run_cli_switch(args):
         return 0 if rc == DISP_CHANGE_SUCCESSFUL else 1
     return 1
 
+# ----------------------------------------------------------------------------
+# 1.9 单实例保护 (互斥锁；重复打开时聚焦已有窗口)
+# ----------------------------------------------------------------------------
+SINGLE_INSTANCE_MUTEX = None
+
+def enforce_single_instance():
+    """确保同一时刻只有一个 DisplaySwitcher 实例运行。
+
+    返回 True 表示本进程是首个实例（继续启动）；返回 False 表示已有实例在运行，
+    此时会将其窗口恢复到前台并应退出本进程。任何异常都放行，避免单实例逻辑故障
+    导致程序无法启动。
+    """
+    global SINGLE_INSTANCE_MUTEX
+    try:
+        kernel32 = ctypes.windll.kernel32
+        kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+        kernel32.CreateMutexW.restype = ctypes.c_void_p
+        SINGLE_INSTANCE_MUTEX = kernel32.CreateMutexW(None, False, "DisplaySwitcher_SingleInstance_v1")
+        if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            if user32:
+                user32.FindWindowW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+                user32.FindWindowW.restype = ctypes.c_void_p
+                user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+                user32.ShowWindow.restype = ctypes.c_int
+                user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
+                user32.SetForegroundWindow.restype = ctypes.c_int
+                hwnd = user32.FindWindowW(None, "DisplaySwitcher // CONTROL DECK")
+                if hwnd:
+                    user32.ShowWindow(hwnd, 9)        # SW_RESTORE
+                    user32.SetForegroundWindow(hwnd)
+            return False
+        return True
+    except Exception:
+        return True
+
+
 def main():
     load_cfg()
     args = sys.argv[1:]
     if "--switch" in args:
         sys.exit(run_cli_switch(args))
+
+    # 单实例：已有实例运行时聚焦其窗口并退出
+    if not enforce_single_instance():
+        sys.exit(0)
 
     port = start_server()
     url = "http://127.0.0.1:%d/" % port

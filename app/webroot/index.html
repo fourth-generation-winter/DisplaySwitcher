@@ -387,7 +387,7 @@ body{
       <div class="mark"></div>
       <div>
         <div class="title">DISPLAY<b>SWITCHER</b></div>
-        <div class="sub">END · FIELD TERMINAL v3.0</div>
+        <div class="sub">END · FIELD TERMINAL v4.0</div>
       </div>
     </div>
     <div class="top-stats">
@@ -568,9 +568,9 @@ body{
         <div class="about-tag">— LAUNCHER —</div>
         <h2 class="about-title">DISPLAY SWITCHER</h2>
         <div class="about-shine"></div>
-        <div class="about-build"><span class="lv">BUILD <b id="aboutVer">v3.0</b></span></div>
-        <div class="about-meta">作者 <b>@Asepacehpe</b> · 仓库 <b>github.com/fourth-generation-winter/DisplaySwitcher</b> · 协议 <b>MIT</b></div>
-        <button class="about-btn" id="aboutCheck">&#9654; 启动 / 检查更新</button>
+        <div class="about-build"><span class="lv">BUILD <b id="aboutVer">v4.0</b></span></div>
+        <div class="about-meta">作者 <b>@Asepacehpe</b> · 仓库 <b><a href="https://github.com/fourth-generation-winter/DisplaySwitcher" target="_blank" rel="noopener">github.com/fourth-generation-winter/DisplaySwitcher</a></b> · 协议 <b>MIT</b></div>
+        <button class="about-btn" id="aboutCheck">&#9654; 检查更新</button>
       </div>
     </section>
 
@@ -726,9 +726,24 @@ navBtns.forEach(b=>b.addEventListener('click',()=>{
   if(b.dataset.sec==='dashboard')loadSystem();   // 进入控制台即刷新硬件识别
 }));
 
-/* 关于页：检查更新按钮（功能匹配阶段再接真实逻辑，这里先占位提示） */
+/* 关于页：检查更新按钮 —— 拉取 GitHub Release 检测新版本 */
 const aboutCheck=document.getElementById('aboutCheck');
-if(aboutCheck)aboutCheck.addEventListener('click',()=>toast('检查更新功能即将上线'));
+if(aboutCheck)aboutCheck.addEventListener('click',async()=>{
+  const oldHtml=aboutCheck.innerHTML;
+  aboutCheck.disabled=true;
+  aboutCheck.innerHTML='检查中…';
+  try{
+    const r=await API.checkUpdate();
+    if(!r.ok){ toast('⚠ '+(r.message||'检查失败')); }
+    else if(r.update_available){
+      toast('发现新版本 <b>'+r.latest+'</b> · 当前 '+r.current);
+      if(r.download_url)setTimeout(()=>window.open(r.download_url,'_blank'),400);
+    }else{
+      toast('✓ 已是最新版本 ('+r.current+')');
+    }
+  }catch(e){ toast('⚠ 检查更新失败'); }
+  finally{ aboutCheck.innerHTML=oldHtml; aboutCheck.disabled=false; }
+});
 
 /* ============================================================
    3.5 硬件识别 (CPU / GPU / 显示器型号) —— 实时写入顶栏与控制台

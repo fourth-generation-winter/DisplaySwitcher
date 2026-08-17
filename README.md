@@ -12,6 +12,8 @@
 - **开机自启**：通过注册表 `HKCU\...\Run` 开关
 - **外观自定义**：粒子 / 辉光 / HUD 配色 / 背景上传（设置持久化）
 - **命令行模式**：`DisplaySwitcher.exe --switch 1920 1080 60`
+- **单实例保护**：重复打开时自动聚焦已运行窗口，不会叠加多个进程
+- **检查更新**：关于页一键检测 GitHub Release 新版本并跳转下载
 - **关于页**：作者、版本、许可证信息
 
 ## 🛠 技术栈
@@ -57,12 +59,13 @@ pyinstaller DisplaySwitcher.spec --name DisplaySwitcher
 | `GET/POST /api/settings` | 读取/更新设置（自启/确认/粒子/辉光/配色） |
 | `POST /api/autostart` | 开关注册表自启 |
 | `POST /api/confirm` `POST /api/revert` | 确认保持 / 回退 |
+| `GET  /api/update/check` | 检测 GitHub Release 最新版本（当前版本 / 是否有更新 / 下载链接） |
 
 ## 📝 说明
 
 - 真实分辨率 / 刷新率切换需在带显示器的 Windows 上验证。
 - 根目录 `index.html` 为早期纯前端原型（仅供预览），实际程序 UI 位于 `app/webroot/`。
-- 「关于」页的「检查更新」按钮目前为占位，后续将对接 GitHub Release。
+- 「关于」页的「检查更新」会调用 GitHub Release API（`fourth-generation-winter/DisplaySwitcher`）检测新版本并跳转下载；网络不可达时提示失败。
 
 ## 📄 许可证
 

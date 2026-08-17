@@ -9,6 +9,7 @@ env/
 
 # ===== PyInstaller build artifacts =====
 build/
+build_*/
 dist/
 _out_*/
 out/
@@ -24,6 +25,7 @@ app/build.log
 
 # ===== Backups / extracted old binaries (reverse-engineering artifacts) =====
 app/_backups/
+app/_restore_point/
 source/
 
 # ===== OS / editor =====

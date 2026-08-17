@@ -27,6 +27,7 @@ const API = {
   },
   async confirm(){ return (await fetch('/api/confirm', { method: 'POST' })).json(); },
   async revert(){  return (await fetch('/api/revert',  { method: 'POST' })).json(); },
+  async checkUpdate(){ return (await fetch('/api/update/check')).json(); },
 };
 
 /* 解析 "2560×1440" / "2560 x 1440" -> {w,h} */
