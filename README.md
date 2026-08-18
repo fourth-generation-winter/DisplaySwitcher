@@ -33,16 +33,19 @@
 ## 🔧 从源码构建
 
 ```powershell
-python -m venv venv
-.\venv\Scripts\activate
-pip install -r requirements.txt
+# 进入虚拟环境（含 wxPython + PyInstaller）后：
 cd app
-pyinstaller DisplaySwitcher.spec --name DisplaySwitcher
-# 产物：app/dist/DisplaySwitcher.exe
+pyinstaller --onefile --windowed --name DisplaySwitcher `
+  --add-data "webroot;webroot" `
+  --add-binary "$env:VENV/Lib/site-packages/wx/WebView2Loader.dll;." `
+  --hidden-import wx --hidden-import wx.html2 `
+  display_switcher_app.py
+# 产物：app/dist/DisplaySwitcher.exe  →  重命名为 DisplaySwitcher_vX.Y.exe
 ```
 
-`DisplaySwitcher.spec` 已内置必要参数（`webroot` 数据、`WebView2Loader.dll`、`wx` 隐藏导入）。
-**注意**：若手动打包，必须包含 `--add-data "webroot;webroot"`、`--add-binary "<venv>/Lib/site-packages/wx/WebView2Loader.dll;."` 与 `--hidden-import wx --hidden-import wx.html2`，否则打包后双击无反应。
+> 实际发布产物为**单文件** `app/dist/DisplaySwitcher_vX.Y.exe`（onedir 的 `DisplaySwitcher.spec` 仅作参考）。
+> **注意**：必须包含 `--add-data "webroot;webroot"`、`--add-binary "<venv>/Lib/site-packages/wx/WebView2Loader.dll;."` 与 `--hidden-import wx --hidden-import wx.html2`，否则打包后双击无反应（缺 WebView2 加载器）。
+> 本机若触发 Python 安全删除 shim 导致清理 `dist/` 旧 exe 崩溃，可构建到全新 `--distpath`（如 `_out_<时间戳>`）再用 `copy /Y` 覆盖，避免删除拦截。
 
 ## 🖥 使用
 
