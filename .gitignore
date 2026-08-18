@@ -12,6 +12,7 @@ build/
 build_*/
 dist/
 _out_*/
+_work_*/
 out/
 _MEI*/
 *.spec.bak
