@@ -10,7 +10,8 @@ DisplaySwitcher // CONTROL DECK
 命令行 (无界面直切):
     DisplaySwitcher.exe --switch 1920 1080 60
 """
-import os, sys, json, uuid, threading, socket, time, ctypes, functools, http.server, urllib.request, urllib.error, ssl
+import os, sys, json, uuid, threading, socket, time, ctypes, functools, http.server, urllib.request, urllib.error, ssl, webbrowser, subprocess
+from urllib.parse import urlparse, parse_qs
 import ctypes.wintypes  # 显式导入，确保冻结( PyInstaller )后 ctypes.wintypes 仍可用
 
 # ----------------------------------------------------------------------------
@@ -630,7 +631,7 @@ def _webroot():
 # ----------------------------------------------------------------------------
 # 5.5 检查更新 (GitHub Release)
 # ----------------------------------------------------------------------------
-APP_VERSION = "4.0"
+APP_VERSION = "4.1"
 GITHUB_REPO = "fourth-generation-winter/DisplaySwitcher"
 
 def _parse_ver(s):
@@ -693,6 +694,297 @@ def check_for_update():
         return {"ok": False, "message": "无法连接 GitHub：%s" % str(e)[:120]}
 
 
+# ===== 自动更新下载管理器（直连 GitHub → 低速/停滞自动切换镜像代理）=====
+_DL = {
+    "running": False, "downloaded": 0, "total": 0,
+    "url": "", "source": "github", "mirror": False,
+    "done": False, "error": None, "path": "", "aborted": False,
+}
+_DL_LOCK = threading.Lock()
+_GITHUB_MIRROR = "https://mirror.ghproxy.com/"
+
+
+class _SwitchToMirror(Exception):
+    """直连 GitHub 下载过慢/停滞，需切到镜像代理。"""
+    pass
+
+
+class _Aborted(Exception):
+    pass
+
+
+class _SockBuf:
+    """对 socket 的带缓冲读取，支持按行读取（解析分块编码 / 响应头）。"""
+    def __init__(self, sock):
+        self.s = sock
+        self.buf = b""
+
+    def _fill(self):
+        c = self.s.recv(65536)
+        if not c:
+            raise IOError("连接已关闭")
+        self.buf += c
+
+    def read_line(self):
+        while b"\r\n" not in self.buf:
+            self._fill()
+        line, self.buf = self.buf.split(b"\r\n", 1)
+        return line
+
+    def take(self, n):
+        while len(self.buf) < n:
+            self._fill()
+        out = self.buf[:n]
+        self.buf = self.buf[n:]
+        return out
+
+
+def _raw_download(src, dest, name, use_mirror, switched, depth=0):
+    """原生 socket 下载（HTTPS 经 ssl 包装）。
+
+    关键可靠性设计：每个 recv 都显式 settimeout(8)。Windows 上 urllib 的缓冲
+    读会忽略 Python 级超时、直到系统 TCP 超时(约 21s)才报错，导致无法及时切镜像；
+    而直接对 socket 设置 recv 超时，停滞连接会在 8s 内抛 socket.timeout，从而可靠
+    触发切镜像。直连阶段若平均速率 <80KB/s 持续 >6s 也主动切镜像。
+    返回最终字节数；遇到 3xx 重定向递归跟随（最多 6 跳）。
+    """
+    if depth > 6:
+        raise IOError("重定向次数过多")
+    parsed = urlparse(src)
+    host = parsed.hostname
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    path = parsed.path or "/"
+    if parsed.query:
+        path += "?" + parsed.query
+    ctx = ssl.create_default_context()
+    try:
+        s = socket.create_connection((host, port), timeout=10)
+        if parsed.scheme == "https":
+            s = ctx.wrap_socket(s, server_hostname=host)
+    except ssl.SSLError:
+        # 个别 Windows 环境缺 OpenSSL 证书链，回退为不校验（仅用于公开 Release 文件）
+        ctx = ssl._create_unverified_context()
+        s = socket.create_connection((host, port), timeout=10)
+        if parsed.scheme == "https":
+            s = ctx.wrap_socket(s, server_hostname=host)
+    s.settimeout(8)  # 每个 recv 的硬超时 → 停滞连接 8s 内必抛 socket.timeout
+    req = ("GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: DisplaySwitcher/%s\r\n"
+           "Accept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n"
+           ) % (path, host, APP_VERSION)
+    s.sendall(req.encode("utf-8"))
+
+    # 读响应头（以 \r\n\r\n 为界）
+    hdr = b""
+    while b"\r\n\r\n" not in hdr:
+        try:
+            c = s.recv(4096)
+        except socket.timeout:
+            raise
+        if not c:
+            raise IOError("连接提前关闭（响应头）")
+        hdr += c
+        if len(hdr) > 65536:
+            raise IOError("响应头异常")
+    hb, _, body0 = hdr.partition(b"\r\n\r\n")
+    lines = hb.split(b"\r\n")
+    try:
+        code = int(lines[0].decode("utf-8", "ignore").split(" ")[1])
+    except Exception:
+        raise IOError("无法解析响应状态行")
+    hmap = {}
+    for ln in lines[1:]:
+        if b":" in ln:
+            k, _, v = ln.partition(b":")
+            hmap[k.decode("utf-8", "ignore").strip().lower()] = v.decode("utf-8", "ignore").strip()
+    if code in (301, 302, 303, 307, 308):
+        loc = hmap.get("location", "")
+        if not loc:
+            raise IOError("重定向但缺失 Location")
+        if loc.startswith("/"):
+            loc = "%s://%s%s" % (parsed.scheme, host, loc)
+        try:
+            s.close()
+        except Exception:
+            pass
+        return _raw_download(loc, dest, name, use_mirror, switched, depth + 1)  # 跟随重定向
+    if code != 200:
+        try:
+            s.close()
+        except Exception:
+            pass
+        raise IOError("HTTP %d" % code)
+
+    total = int(hmap.get("content-length", "0") or 0)
+    chunked = hmap.get("transfer-encoding", "").lower() == "chunked"
+    with _DL_LOCK:
+        _DL["total"] = total
+        _DL["url"] = src
+        _DL["source"] = name
+        _DL["mirror"] = (name == "mirror")
+
+    dl = 0
+    t0 = time.time()
+
+    def _progress(n):
+        nonlocal dl
+        dl += n
+        with _DL_LOCK:
+            _DL["downloaded"] = dl
+        now = time.time()
+        # 直连阶段持续低速 → 主动切镜像
+        if (name == "github" and use_mirror and not switched["v"]
+                and now - t0 > 6 and (dl / (now - t0)) < 80 * 1024):
+            raise _SwitchToMirror()
+
+    f = open(dest, "wb")
+    try:
+        if chunked:
+            br = _SockBuf(s)
+            br.buf = body0
+            while True:
+                if _DL.get("aborted"):
+                    raise _Aborted()
+                size_line = br.read_line().strip()
+                if not size_line:
+                    continue
+                try:
+                    size = int(size_line.split(b";")[0], 16)
+                except ValueError:
+                    raise IOError("分块长度解析失败")
+                if size == 0:
+                    break
+                data = br.take(size)
+                f.write(data)
+                br.take(2)  # 块尾 \r\n
+                _progress(len(data))
+        else:
+            if body0:
+                f.write(body0)
+                _progress(len(body0))
+            while True:
+                if _DL.get("aborted"):
+                    raise _Aborted()
+                try:
+                    chunk = s.recv(65536)
+                except socket.timeout:
+                    raise  # 停滞超时 → 由 worker 切镜像
+                if not chunk:
+                    break
+                f.write(chunk)
+                _progress(len(chunk))
+    finally:
+        try:
+            f.close()
+        except Exception:
+            pass
+        try:
+            s.close()
+        except Exception:
+            pass
+    return dl
+
+
+def _dl_worker(url, dest):
+    """后台线程：先直连 GitHub，若连接超时/停滞/速率过低则切换镜像代理重试。"""
+    global _DL
+    with _DL_LOCK:
+        _DL.update({"running": True, "downloaded": 0, "total": 0, "done": False,
+                    "error": None, "path": dest, "aborted": False, "mirror": False,
+                    "source": "github"})
+    use_mirror = url.startswith("https://github.com/")
+    switched = {"v": False}
+    sources = [("github", url)]
+    if use_mirror:
+        sources.append(("mirror", _GITHUB_MIRROR + url))
+    for name, src in sources:
+        if _DL.get("aborted"):
+            break
+        try:
+            final = _raw_download(src, dest, name, use_mirror, switched)
+        except _SwitchToMirror:
+            if name == "github" and use_mirror:
+                switched["v"] = True
+                with _DL_LOCK:
+                    _DL["source"] = "mirror"
+                    _DL["mirror"] = True
+                    _DL["url"] = _GITHUB_MIRROR + url
+                continue
+            with _DL_LOCK:
+                _DL["error"] = "直连与镜像代理均下载过慢，请改为手动下载"
+                _DL["running"] = False
+            return
+        except socket.timeout:
+            if name == "github" and use_mirror:
+                switched["v"] = True
+                with _DL_LOCK:
+                    _DL["source"] = "mirror"
+                    _DL["mirror"] = True
+                    _DL["url"] = _GITHUB_MIRROR + url
+                continue
+            with _DL_LOCK:
+                _DL["error"] = "下载连接超时（停滞），请检查网络或手动下载"
+                _DL["running"] = False
+            return
+        except _Aborted:
+            with _DL_LOCK:
+                _DL["error"] = "已取消"
+                _DL["running"] = False
+            return
+        except Exception as e:
+            if name == "github" and use_mirror and not switched["v"]:
+                switched["v"] = True
+                with _DL_LOCK:
+                    _DL["source"] = "mirror"
+                    _DL["mirror"] = True
+                    _DL["url"] = _GITHUB_MIRROR + url
+                continue
+            with _DL_LOCK:
+                _DL["error"] = str(e)[:220]
+                _DL["running"] = False
+            return
+        # 成功完成
+        with _DL_LOCK:
+            _DL["done"] = True
+            _DL["running"] = False
+            _DL["downloaded"] = final
+            if _DL.get("total", 0) == 0:
+                _DL["total"] = final
+        return
+    with _DL_LOCK:
+        _DL["running"] = False
+
+
+def start_download(url):
+    with _DL_LOCK:
+        if _DL.get("running"):
+            return False
+    name = os.path.basename(url.split("?")[0]) or "DisplaySwitcher_update.exe"
+    dest = os.path.join(os.path.expanduser("~"), "Downloads", name)
+    try:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+    except Exception:
+        dest = os.path.join(os.environ.get("TEMP", "/tmp"), name)
+    threading.Thread(target=_dl_worker, args=(url, dest), daemon=True).start()
+    return True
+
+
+def open_url_in_browser(url):
+    try:
+        webbrowser.open(url)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160]}
+
+
+def open_folder(path):
+    d = os.path.dirname(path) if os.path.isfile(path) else path
+    try:
+        subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160]}
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -722,6 +1014,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._json(200, get_system_info())
         if p == "/api/update/check":
             return self._json(200, check_for_update())
+        if p == "/api/update/progress":
+            with _DL_LOCK:
+                return self._json(200, dict(_DL))
+        if p.startswith("/api/open_url"):
+            url = parse_qs(urlparse(self.path).query).get("url", [""])[0]
+            return self._json(200, open_url_in_browser(url) if url else {"ok": False, "error": "missing url"})
+        if p.startswith("/api/open_folder"):
+            path = parse_qs(urlparse(self.path).query).get("path", [""])[0]
+            return self._json(200, open_folder(path) if path else {"ok": False, "error": "missing path"})
         if p == "/api/settings":
             return self._json(200, cfg["settings"])
         if p.startswith("/api/window/"):
@@ -763,6 +1064,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._json(200, confirm_keep())
         if p == "/api/revert":
             return self._json(200, revert_now())
+        if p == "/api/update/download":
+            url = d.get("url") or ""
+            if not url:
+                return self._json(400, {"ok": False, "message": "缺少下载地址"})
+            ok = start_download(url)
+            return self._json(200, {"ok": ok, "message": "已启动下载" if ok else "已有下载任务进行中"})
+        if p == "/api/update/cancel":
+            with _DL_LOCK:
+                _DL["aborted"] = True
+            return self._json(200, {"ok": True})
         if p == "/api/autostart":
             res = set_autostart(bool(d.get("enabled")))
             save_cfg()
@@ -910,6 +1221,7 @@ def start_gui(url):
             try:
                 self.web = wx.html2.WebView.New(self._panel)
                 self.web.LoadURL(url)
+                self.web.Bind(wx.html2.EVT_WEBVIEW_NEWWINDOW, self._on_web_new_window)
                 sizer.Add(self.web, 1, wx.EXPAND)
             except Exception as e:
                 fatal("WebView.New failed: %r" % e)
@@ -934,6 +1246,16 @@ def start_gui(url):
                 pass
             if event:
                 event.Skip()
+
+        def _on_web_new_window(self, event):
+            # 外链（仓库、下载页等）用系统默认浏览器打开，而非在 WebView 内导航
+            url = event.GetURL()
+            if url:
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    pass
+            event.Veto()
 
         def _refresh_layout(self):
             self.Layout()

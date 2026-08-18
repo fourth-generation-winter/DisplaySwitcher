@@ -28,6 +28,12 @@ const API = {
   async confirm(){ return (await fetch('/api/confirm', { method: 'POST' })).json(); },
   async revert(){  return (await fetch('/api/revert',  { method: 'POST' })).json(); },
   async checkUpdate(){ return (await fetch('/api/update/check')).json(); },
+  async openUrl(u){ return (await fetch('/api/open_url?url=' + encodeURIComponent(u))).json(); },
+  async startDownload(u){ return (await fetch('/api/update/download', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: u }) })).json(); },
+  async downloadProgress(){ return (await fetch('/api/update/progress')).json(); },
+  async cancelDownload(){ return (await fetch('/api/update/cancel', { method: 'POST' })).json(); },
+  async openFolder(p){ return (await fetch('/api/open_folder?path=' + encodeURIComponent(p))).json(); },
 };
 
 /* 解析 "2560×1440" / "2560 x 1440" -> {w,h} */

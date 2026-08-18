@@ -13,7 +13,9 @@
 - **外观自定义**：粒子 / 辉光 / HUD 配色 / 背景上传（设置持久化）
 - **命令行模式**：`DisplaySwitcher.exe --switch 1920 1080 60`
 - **单实例保护**：重复打开时自动聚焦已运行窗口，不会叠加多个进程
-- **检查更新**：关于页一键检测 GitHub Release 新版本并跳转下载
+- **自动检查更新**：启动后静默检测 GitHub Release，发现新版本弹出居中 HUD 提示（可忽略，忽略后同版本不再打扰）
+- **下载管理器**：「前往下载」提供两种方式——跳转 GitHub 自行下载，或由软件代为下载；代下时先直连 GitHub，速度过低自动切换镜像代理（`mirror.ghproxy.com`），带实时进度条 / 速度 / 已用源显示，完成后可一键打开所在文件夹
+- **外链打开**：关于页仓库链接等外链点击后在系统默认浏览器打开
 - **关于页**：作者、版本、许可证信息
 
 ## 🛠 技术栈
@@ -60,12 +62,17 @@ pyinstaller DisplaySwitcher.spec --name DisplaySwitcher
 | `POST /api/autostart` | 开关注册表自启 |
 | `POST /api/confirm` `POST /api/revert` | 确认保持 / 回退 |
 | `GET  /api/update/check` | 检测 GitHub Release 最新版本（当前版本 / 是否有更新 / 下载链接） |
+| `POST /api/update/download` | 启动后台下载（body: `{url}`），文件保存到下载文件夹 |
+| `GET  /api/update/progress` | 轮询下载进度（已下载 / 总大小 / 当前源 / 完成 / 错误） |
+| `POST /api/update/cancel` | 取消进行中的下载 |
+| `GET  /api/open_url` | 在系统默认浏览器打开外链（仓库 / Release 页） |
+| `GET  /api/open_folder` | 打开文件所在文件夹（`explorer /select`） |
 
 ## 📝 说明
 
 - 真实分辨率 / 刷新率切换需在带显示器的 Windows 上验证。
 - 根目录 `index.html` 为早期纯前端原型（仅供预览），实际程序 UI 位于 `app/webroot/`。
-- 「关于」页的「检查更新」会调用 GitHub Release API（`fourth-generation-winter/DisplaySwitcher`）检测新版本并跳转下载；网络不可达时提示失败。
+- 「关于」页的「检查更新」与启动时的静默检测都会调用 GitHub Release API（`fourth-generation-winter/DisplaySwitcher`）：有更新时弹出居中 HUD 提示，「前往下载」可选择「跳转 GitHub 自行下载」或「由软件代为下载」；代下走直连 GitHub，若前 ~4 秒速度过低（<300KB）自动切换到镜像代理 `mirror.ghproxy.com`，进度弹窗实时显示百分比 / 速度 / 已用源（直连 / 镜像），完成后可一键打开下载文件夹。网络不可达时提示失败，不会反复打扰。
 
 ## 📄 许可证
 

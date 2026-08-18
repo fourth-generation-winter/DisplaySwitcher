@@ -363,6 +363,28 @@ body{
   .about-meta b{color:var(--cyan-bright);font-weight:600}
   .about-btn{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:1px;color:#04110f;background:linear-gradient(90deg,#ff3df0,var(--cyan));border:none;padding:12px 28px;border-radius:6px;cursor:pointer;box-shadow:var(--glow-cyan-soft);position:relative;transition:filter .25s}
   .about-btn:hover{filter:brightness(1.12)}
+/* ===== 更新弹窗（方案 A 居中 HUD） ===== */
+.modal-mask{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(6,9,13,.72);z-index:60;}
+.modal-mask.show{display:flex;animation:fadeIn .18s ease;}
+.modal-card{width:366px;max-width:92vw;background:#151b22;border:1px solid #2ad0c5;border-radius:16px;padding:24px 26px;text-align:center;box-shadow:0 0 0 1px rgba(42,208,197,.14),0 22px 60px rgba(0,0,0,.55);}
+.modal-tag{font-size:11px;color:#2ad0c5;letter-spacing:2px;margin-bottom:10px;}
+.modal-title{margin:0 0 14px;font-size:18px;font-weight:600;color:#f2f5f9;}
+.version-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:14px;font-family:var(--mono),monospace;font-size:14px;color:#9aa3ad;}
+.version-row .ver-arrow{color:#2ad0c5;}
+.version-row b{color:#2ad0c5;}
+.modal-desc{margin:0 0 20px;font-size:13px;color:#9aa3ad;line-height:1.5;}
+.modal-actions{display:flex;gap:10px;justify-content:center;}
+.modal-actions.col{flex-direction:column;}
+.btn-primary{padding:9px 20px;border:1px solid #2ad0c5;background:#2ad0c5;color:#0e1116;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;}
+.btn-primary:hover{background:#3ee0d4;}
+.btn-ghost{padding:9px 20px;border:1px solid #4a535c;background:transparent;color:#9aa3ad;border-radius:8px;cursor:pointer;font-size:13px;}
+.btn-ghost:hover{border-color:#6a747e;color:#cfd6dd;}
+.btn-primary.ghost2{background:transparent;color:#2ad0c5;}
+.btn-primary.ghost2:hover{background:rgba(42,208,197,.1);}
+.prog-bar{height:8px;background:#0e1116;border-radius:6px;overflow:hidden;margin:6px 0 12px;border:1px solid #232c34;}
+.prog-fill{height:100%;width:0;background:#2ad0c5;transition:width .25s ease;}
+.prog-info{display:flex;justify-content:space-between;font-size:12px;color:#9aa3ad;font-family:var(--mono),monospace;margin-bottom:6px;}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 </style>
 </head>
 <body>
@@ -387,7 +409,7 @@ body{
       <div class="mark"></div>
       <div>
         <div class="title">DISPLAY<b>SWITCHER</b></div>
-        <div class="sub">END · FIELD TERMINAL v4.0</div>
+        <div class="sub">END · FIELD TERMINAL v4.1</div>
       </div>
     </div>
     <div class="top-stats">
@@ -568,8 +590,8 @@ body{
         <div class="about-tag">— LAUNCHER —</div>
         <h2 class="about-title">DISPLAY SWITCHER</h2>
         <div class="about-shine"></div>
-        <div class="about-build"><span class="lv">BUILD <b id="aboutVer">v4.0</b></span></div>
-        <div class="about-meta">作者 <b>@Asepacehpe</b> · 仓库 <b><a href="https://github.com/fourth-generation-winter/DisplaySwitcher" target="_blank" rel="noopener">github.com/fourth-generation-winter/DisplaySwitcher</a></b> · 协议 <b>MIT</b></div>
+        <div class="about-build"><span class="lv">BUILD <b id="aboutVer">v4.1</b></span></div>
+        <div class="about-meta">作者 <b>@Asepacehpe</b> · 仓库 <b><a href="https://github.com/fourth-generation-winter/DisplaySwitcher" target="_blank" rel="noopener" data-ext>github.com/fourth-generation-winter/DisplaySwitcher</a></b> · 协议 <b>MIT</b></div>
         <button class="about-btn" id="aboutCheck">&#9654; 检查更新</button>
       </div>
     </section>
@@ -578,6 +600,48 @@ body{
 </div>
 
 <div class="toast" id="toast"><span class="ti"></span><span class="tx" id="toastTx"></span></div>
+
+<div class="modal-mask" id="updateMask">
+  <div class="modal-card">
+    <div class="modal-tag">— UPDATE —</div>
+    <h3 class="modal-title">新版本可用</h3>
+    <div class="version-row"><span>当前 <b id="upCur">v4.1</b></span><span class="ver-arrow">→</span><span>最新 <b id="upNew">v4.1</b></span></div>
+    <p class="modal-desc" id="upNotes">发现新版本，建议更新以获得完整体验。</p>
+    <div class="modal-actions">
+      <button class="btn-primary" id="upGo">前往下载</button>
+      <button class="btn-ghost" id="upIgnore">忽略本次</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="dlChoiceMask">
+  <div class="modal-card">
+    <div class="modal-tag">— DOWNLOAD —</div>
+    <h3 class="modal-title">选择下载方式</h3>
+    <p class="modal-desc">如何获取 <b id="dlChoiceVer">新版本</b>？</p>
+    <div class="modal-actions col">
+      <button class="btn-primary" id="dlGithub">跳转 GitHub 自行下载</button>
+      <button class="btn-primary ghost2" id="dlAuto">由软件代为下载（含进度）</button>
+    </div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn-ghost" id="dlChoiceBack">返回</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="dlProgMask">
+  <div class="modal-card">
+    <div class="modal-tag" id="dlSrc">— DOWNLOADING —</div>
+    <h3 class="modal-title">正在下载 <b id="dlName">update.exe</b></h3>
+    <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+    <div class="prog-info"><span id="progPct">0%</span><span id="progSize">0.0 / 0.0 MB</span></div>
+    <div class="prog-info" style="margin-top:-6px;"><span id="progSpeed">—</span></div>
+    <p class="modal-desc" id="dlMsg"></p>
+    <div class="modal-actions" id="dlProgActions">
+      <button class="btn-ghost" id="dlCancel">取消</button>
+    </div>
+  </div>
+</div>
 
 <div class="confirm-modal" id="confirmModal">
   <div class="cm-box">
@@ -726,24 +790,109 @@ navBtns.forEach(b=>b.addEventListener('click',()=>{
   if(b.dataset.sec==='dashboard')loadSystem();   // 进入控制台即刷新硬件识别
 }));
 
-/* 关于页：检查更新按钮 —— 拉取 GitHub Release 检测新版本 */
+/* 关于页：检查更新按钮 + 自动检测 + 居中 HUD 弹窗 + 下载选择 + 进度条 */
+let _curUpdate=null, _progTimer=null, _lastBytes=0, _lastT=0;
+
+function showModal(id){ document.getElementById(id).classList.add('show'); }
+function hideModal(id){ document.getElementById(id).classList.remove('show'); }
+
+async function runUpdateCheck(auto){
+  try{
+    const r=await API.checkUpdate();
+    if(!r.ok){ if(!auto) toast('⚠ '+(r.message||'检查失败')); return; }
+    if(r.update_available && r.latest){
+      if(auto && localStorage.getItem('ds_ignore_'+r.latest)) return;
+      _curUpdate=r;
+      document.getElementById('upCur').textContent=r.current;
+      document.getElementById('upNew').textContent=r.latest;
+      const firstLine=(r.notes||'').split('\n')[0].trim();
+      document.getElementById('upNotes').textContent=firstLine||'发现新版本，建议更新以获得完整体验。';
+      showModal('updateMask');
+    }else if(!auto){
+      toast('✓ 已是最新版本 ('+r.current+')');
+    }
+  }catch(e){ if(!auto) toast('⚠ 检查更新失败'); }
+}
+
+function setProg(pct, down, total, speed, source){
+  document.getElementById('progFill').style.width=pct+'%';
+  document.getElementById('progPct').textContent=pct+'%';
+  document.getElementById('progSize').textContent=(down/1048576).toFixed(1)+' / '+(total/1048576).toFixed(1)+' MB';
+  if(source) document.getElementById('dlSrc').textContent=(source==='mirror'?'— 镜像加速中 —':'— 直连下载中 —');
+  if(speed!==undefined) document.getElementById('progSpeed').textContent=Math.round(speed/1024)+' KB/s';
+}
+function stopProg(){ if(_progTimer){ clearInterval(_progTimer); _progTimer=null; } }
+
+function startAutoDownload(url){
+  const name=(url.split('?')[0].split('/').pop())||'update.exe';
+  document.getElementById('dlName').textContent=name;
+  document.getElementById('dlMsg').textContent='';
+  document.getElementById('dlSrc').textContent='— DOWNLOADING —';
+  setProg(0,0,0);
+  document.getElementById('dlProgActions').innerHTML='<button class="btn-ghost" id="dlCancel">取消</button>';
+  document.getElementById('dlCancel').addEventListener('click',async()=>{
+    await API.cancelDownload(); stopProg(); hideModal('dlProgMask'); toast('已取消下载');
+  });
+  showModal('dlProgMask');
+  API.startDownload(url).then(r=>{ if(!r.ok){ toast('⚠ '+(r.message||'无法启动下载')); hideModal('dlProgMask'); } });
+  _lastBytes=0; _lastT=Date.now();
+  _progTimer=setInterval(async()=>{
+    const p=await API.downloadProgress();
+    if(p.error){ stopProg(); document.getElementById('dlMsg').textContent='下载失败：'+p.error; document.getElementById('dlSrc').textContent='— ERROR —'; return; }
+    const speed=(Date.now()-_lastT)?((p.downloaded-_lastBytes)/((Date.now()-_lastT)/1000)):0;
+    _lastBytes=p.downloaded; _lastT=Date.now();
+    const pct=p.total?Math.min(100,Math.round(p.downloaded/p.total*100)):0;
+    setProg(pct,p.downloaded,p.total,speed,p.source);
+    if(p.done){ stopProg(); showDone(p); }
+  },400);
+}
+function showDone(p){
+  document.getElementById('dlSrc').textContent='— COMPLETE —';
+  document.getElementById('dlMsg').textContent='已保存到下载文件夹';
+  const path=p.path||'';
+  document.getElementById('dlProgActions').innerHTML=
+    '<button class="btn-primary" id="dlOpen">打开文件夹</button><button class="btn-ghost" id="dlClose">关闭</button>';
+  document.getElementById('dlClose').addEventListener('click',()=>hideModal('dlProgMask'));
+  document.getElementById('dlOpen').addEventListener('click',()=>{ if(path) API.openFolder(path); });
+}
+
 const aboutCheck=document.getElementById('aboutCheck');
 if(aboutCheck)aboutCheck.addEventListener('click',async()=>{
   const oldHtml=aboutCheck.innerHTML;
-  aboutCheck.disabled=true;
-  aboutCheck.innerHTML='检查中…';
-  try{
-    const r=await API.checkUpdate();
-    if(!r.ok){ toast('⚠ '+(r.message||'检查失败')); }
-    else if(r.update_available){
-      toast('发现新版本 <b>'+r.latest+'</b> · 当前 '+r.current);
-      if(r.download_url)setTimeout(()=>window.open(r.download_url,'_blank'),400);
-    }else{
-      toast('✓ 已是最新版本 ('+r.current+')');
-    }
-  }catch(e){ toast('⚠ 检查更新失败'); }
-  finally{ aboutCheck.innerHTML=oldHtml; aboutCheck.disabled=false; }
+  aboutCheck.disabled=true; aboutCheck.innerHTML='检查中…';
+  await runUpdateCheck(false);
+  aboutCheck.innerHTML=oldHtml; aboutCheck.disabled=false;
 });
+
+document.getElementById('upGo').addEventListener('click',()=>{
+  hideModal('updateMask');
+  document.getElementById('dlChoiceVer').textContent=_curUpdate?_curUpdate.latest:'新版本';
+  showModal('dlChoiceMask');
+});
+document.getElementById('upIgnore').addEventListener('click',()=>{
+  if(_curUpdate&&_curUpdate.latest) localStorage.setItem('ds_ignore_'+_curUpdate.latest,'1');
+  hideModal('updateMask');
+});
+document.getElementById('dlChoiceBack').addEventListener('click',()=>{ hideModal('dlChoiceMask'); showModal('updateMask'); });
+document.getElementById('dlGithub').addEventListener('click',()=>{
+  hideModal('dlChoiceMask');
+  const u=(_curUpdate&&_curUpdate.release_url)||(_curUpdate&&_curUpdate.download_url);
+  if(u) API.openUrl(u);
+});
+document.getElementById('dlAuto').addEventListener('click',()=>{
+  if(!_curUpdate||!_curUpdate.download_url){ toast('该版本无可下载附件，请跳转 GitHub'); return; }
+  hideModal('dlChoiceMask');
+  startAutoDownload(_curUpdate.download_url);
+});
+
+/* 外链（仓库等）点击 -> 系统默认浏览器打开 */
+document.addEventListener('click',(e)=>{
+  const a=e.target.closest('a[data-ext]');
+  if(a){ e.preventDefault(); API.openUrl(a.getAttribute('href')); }
+});
+
+/* 启动 4 秒后静默检查新版本 */
+setTimeout(()=>runUpdateCheck(true), 4000);
 
 /* ============================================================
    3.5 硬件识别 (CPU / GPU / 显示器型号) —— 实时写入顶栏与控制台
