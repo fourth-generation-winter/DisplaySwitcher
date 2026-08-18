@@ -36,6 +36,7 @@
 # 进入虚拟环境（含 wxPython + PyInstaller）后：
 cd app
 pyinstaller --onefile --windowed --name DisplaySwitcher `
+  --icon "webroot/assets/DisplaySwitcher.ico" `
   --add-data "webroot;webroot" `
   --add-binary "$env:VENV/Lib/site-packages/wx/WebView2Loader.dll;." `
   --hidden-import wx --hidden-import wx.html2 `
@@ -44,7 +45,7 @@ pyinstaller --onefile --windowed --name DisplaySwitcher `
 ```
 
 > 实际发布产物为**单文件** `app/dist/DisplaySwitcher_vX.Y.exe`（onedir 的 `DisplaySwitcher.spec` 仅作参考）。
-> **注意**：必须包含 `--add-data "webroot;webroot"`、`--add-binary "<venv>/Lib/site-packages/wx/WebView2Loader.dll;."` 与 `--hidden-import wx --hidden-import wx.html2`，否则打包后双击无反应（缺 WebView2 加载器）。
+> **注意**：必须包含 `--icon "webroot/assets/DisplaySwitcher.ico"`、`--add-data "webroot;webroot"`、`--add-binary "<venv>/Lib/site-packages/wx/WebView2Loader.dll;."` 与 `--hidden-import wx --hidden-import wx.html2`，否则打包后会没有图标或双击无反应。
 > 本机若触发 Python 安全删除 shim 导致清理 `dist/` 旧 exe 崩溃，可构建到全新 `--distpath`（如 `_out_<时间戳>`）再用 `copy /Y` 覆盖，避免删除拦截。
 
 ## 🖥 使用
