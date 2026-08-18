@@ -994,8 +994,18 @@ def apply_update():
     """
     with _DL_LOCK:
         src = _DL.get("path", "")
+        total = _DL.get("total", 0)
+        downloaded = _DL.get("downloaded", 0)
     if not src or not os.path.isfile(src):
         return {"ok": False, "error": "未找到已下载的更新文件"}
+    # 安全护栏：绝不用不完整的文件覆盖正在运行的程序，避免变砖
+    if total and downloaded < total:
+        return {"ok": False, "error": "更新文件下载不完整，请重新下载"}
+    try:
+        if total and os.path.getsize(src) < total:
+            return {"ok": False, "error": "更新文件大小不符，请重新下载"}
+    except Exception:
+        pass
     dst = sys.executable
     if not dst or not os.path.isfile(dst):
         return {"ok": False, "error": "无法确定当前程序路径"}
