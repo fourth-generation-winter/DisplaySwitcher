@@ -657,6 +657,13 @@ def _github_open(url, timeout=8):
     try:
         return urllib.request.urlopen(req, timeout=timeout)
     except urllib.error.URLError as e:
+        # 若系统代理(HTTP_PROXY/HTTPS_PROXY)失效或未运行，回退为直连
+        if os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY"):
+            try:
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                return opener.open(req, timeout=timeout)
+            except urllib.error.URLError:
+                pass
         # Windows 上个别环境 OpenSSL 默认证书链缺失，回退为不校验（仅用于公开 Release 信息）
         if isinstance(getattr(e, "reason", None), ssl.SSLError):
             return urllib.request.urlopen(req, timeout=timeout,
