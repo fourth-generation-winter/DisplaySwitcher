@@ -631,7 +631,7 @@ def _webroot():
 # ----------------------------------------------------------------------------
 # 5.5 检查更新 (GitHub Release)
 # ----------------------------------------------------------------------------
-APP_VERSION = "4.2"
+APP_VERSION = "4.3"
 GITHUB_REPO = "fourth-generation-winter/DisplaySwitcher"
 
 def _parse_ver(s):
@@ -701,7 +701,11 @@ _DL = {
     "done": False, "error": None, "path": "", "aborted": False,
 }
 _DL_LOCK = threading.Lock()
-_GITHUB_MIRROR = "https://mirror.ghproxy.com/"
+# 多镜像代理轮询：优先使用本机测试可通的 gh-proxy.com，原 mirror.ghproxy.com 作兜底。
+_GITHUB_MIRRORS = [
+    "https://gh-proxy.com/",
+    "https://mirror.ghproxy.com/",
+]
 
 
 class _SwitchToMirror(Exception):
@@ -885,7 +889,7 @@ def _raw_download(src, dest, name, use_mirror, switched, depth=0):
 
 
 def _dl_worker(url, dest):
-    """后台线程：先直连 GitHub，若连接超时/停滞/速率过低则切换镜像代理重试。"""
+    """后台线程：先直连 GitHub，若连接超时/停滞/速率过低则依次尝试镜像代理。"""
     global _DL
     with _DL_LOCK:
         _DL.update({"running": True, "downloaded": 0, "total": 0, "done": False,
@@ -893,36 +897,25 @@ def _dl_worker(url, dest):
                     "source": "github"})
     use_mirror = url.startswith("https://github.com/")
     switched = {"v": False}
-    sources = [("github", url)]
-    if use_mirror:
-        sources.append(("mirror", _GITHUB_MIRROR + url))
-    for name, src in sources:
+    mirror_urls = [m + url for m in _GITHUB_MIRRORS] if use_mirror else []
+    sources = [("github", url)] + [("mirror", u) for u in mirror_urls]
+    for idx, (name, src) in enumerate(sources):
         if _DL.get("aborted"):
             break
+        # 切到镜像源前先把状态暴露给前端
+        if name == "mirror":
+            with _DL_LOCK:
+                _DL["source"] = "mirror"
+                _DL["mirror"] = True
+                _DL["url"] = src
         try:
             final = _raw_download(src, dest, name, use_mirror, switched)
-        except _SwitchToMirror:
+        except (_SwitchToMirror, socket.timeout):
             if name == "github" and use_mirror:
                 switched["v"] = True
-                with _DL_LOCK:
-                    _DL["source"] = "mirror"
-                    _DL["mirror"] = True
-                    _DL["url"] = _GITHUB_MIRROR + url
                 continue
             with _DL_LOCK:
-                _DL["error"] = "直连与镜像代理均下载过慢，请改为手动下载"
-                _DL["running"] = False
-            return
-        except socket.timeout:
-            if name == "github" and use_mirror:
-                switched["v"] = True
-                with _DL_LOCK:
-                    _DL["source"] = "mirror"
-                    _DL["mirror"] = True
-                    _DL["url"] = _GITHUB_MIRROR + url
-                continue
-            with _DL_LOCK:
-                _DL["error"] = "下载连接超时（停滞），请检查网络或手动下载"
+                _DL["error"] = "所有下载源均超时或停滞，请检查网络或手动下载"
                 _DL["running"] = False
             return
         except _Aborted:
@@ -933,10 +926,6 @@ def _dl_worker(url, dest):
         except Exception as e:
             if name == "github" and use_mirror and not switched["v"]:
                 switched["v"] = True
-                with _DL_LOCK:
-                    _DL["source"] = "mirror"
-                    _DL["mirror"] = True
-                    _DL["url"] = _GITHUB_MIRROR + url
                 continue
             with _DL_LOCK:
                 _DL["error"] = str(e)[:220]
@@ -952,6 +941,8 @@ def _dl_worker(url, dest):
         return
     with _DL_LOCK:
         _DL["running"] = False
+        if not _DL.get("error"):
+            _DL["error"] = "所有下载源均失败，请检查网络或手动下载"
 
 
 def start_download(url):
