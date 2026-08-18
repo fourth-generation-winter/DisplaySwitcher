@@ -10,7 +10,7 @@ DisplaySwitcher // CONTROL DECK
 命令行 (无界面直切):
     DisplaySwitcher.exe --switch 1920 1080 60
 """
-import os, sys, json, uuid, threading, socket, time, ctypes, functools, http.server, urllib.request, urllib.error, ssl, webbrowser, subprocess
+import os, sys, json, uuid, threading, socket, time, ctypes, functools, http.server, urllib.request, urllib.error, ssl, webbrowser, subprocess, tempfile
 from urllib.parse import urlparse, parse_qs
 import ctypes.wintypes  # 显式导入，确保冻结( PyInstaller )后 ctypes.wintypes 仍可用
 
@@ -631,7 +631,7 @@ def _webroot():
 # ----------------------------------------------------------------------------
 # 5.5 检查更新 (GitHub Release)
 # ----------------------------------------------------------------------------
-APP_VERSION = "4.3"
+APP_VERSION = "4.4"
 GITHUB_REPO = "fourth-generation-winter/DisplaySwitcher"
 
 def _parse_ver(s):
@@ -983,6 +983,75 @@ def open_folder(path):
         return {"ok": False, "error": str(e)[:160]}
 
 
+def apply_update():
+    """下载完成后：用新文件覆盖当前运行的 exe 并重启程序以应用更新。
+
+    Windows 下无法直接覆盖正在运行的 exe（文件被锁定）。做法：写一个独立
+    的 .bat 重启脚本（detached 启动，脱离当前进程），脚本循环等待直到当前
+    进程退出、目标文件解锁，再用新文件 copy /Y 覆盖，最后 start 重新拉起程序，
+    脚本自我删除。当前进程在响应返回后由定时器强制退出（os._exit），把控制权
+    交给重启脚本。
+    """
+    with _DL_LOCK:
+        src = _DL.get("path", "")
+    if not src or not os.path.isfile(src):
+        return {"ok": False, "error": "未找到已下载的更新文件"}
+    dst = sys.executable
+    if not dst or not os.path.isfile(dst):
+        return {"ok": False, "error": "无法确定当前程序路径"}
+    if os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(dst)):
+        # 下载到的就是当前 exe 本身，无需覆盖，直接重启
+        _restart_now(dst)
+        return {"ok": True, "restarting": True}
+    # 注意：批处理文件本身不能内嵌中文路径（cmd 读 .bat 用系统默认代码页，
+    # 即使先 chcp 65001 也只影响执行不影响文件读取，会导致含中文/空格路径乱码）。
+    # 因此路径通过环境变量（宽字符）传入，.bat 内只引用 %DS_SRC%/%DS_DST%。
+    bat = os.path.join(tempfile.gettempdir(), "ds_update_%s.bat" % uuid.uuid4().hex[:8])
+    try:
+        with open(bat, "w", encoding="utf-8") as f:
+            f.write("@echo off\n")
+            f.write(":wait\n")
+            f.write("timeout /t 1 >nul\n")
+            f.write('copy /Y "%DS_SRC%" "%DS_DST%" >nul 2>nul\n')
+            f.write('if exist "%DS_DST%" (\n')
+            f.write('  fc /b "%DS_SRC%" "%DS_DST%" >nul 2>nul && goto launch\n')
+            f.write(")\n")
+            f.write("goto wait\n")
+            f.write(":launch\n")
+            f.write('start "" "%DS_DST%"\n')
+            f.write("del %~f0\n")
+        env = dict(os.environ)
+        env["DS_SRC"] = src
+        env["DS_DST"] = dst
+        subprocess.Popen(
+            ["cmd", "/c", bat],
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            close_fds=True, env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        # 给 HTTP 响应一点时间回写，再强制退出当前进程
+        threading.Timer(0.4, lambda: os._exit(0)).start()
+        return {"ok": True, "restarting": True}
+    except Exception as e:
+        try:
+            os.remove(bat)
+        except Exception:
+            pass
+        return {"ok": False, "error": str(e)[:160]}
+
+
+def _restart_now(exe_path):
+    try:
+        subprocess.Popen(
+            ["cmd", "/c", 'start "" %s' % ('"%s"' % exe_path.replace('"', ''))],
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            close_fds=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+    threading.Timer(0.4, lambda: os._exit(0)).start()
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -1072,6 +1141,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with _DL_LOCK:
                 _DL["aborted"] = True
             return self._json(200, {"ok": True})
+        if p == "/api/update/apply":
+            r = apply_update()
+            return self._json(200 if r.get("ok") else 400, r)
         if p == "/api/autostart":
             res = set_autostart(bool(d.get("enabled")))
             save_cfg()

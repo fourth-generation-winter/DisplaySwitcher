@@ -409,7 +409,7 @@ body{
       <div class="mark"></div>
       <div>
         <div class="title">DISPLAY<b>SWITCHER</b></div>
-        <div class="sub">END · FIELD TERMINAL v4.3</div>
+        <div class="sub">END · FIELD TERMINAL v4.4</div>
       </div>
     </div>
     <div class="top-stats">
@@ -590,7 +590,7 @@ body{
         <div class="about-tag">— LAUNCHER —</div>
         <h2 class="about-title">DISPLAY SWITCHER</h2>
         <div class="about-shine"></div>
-        <div class="about-build"><span class="lv">BUILD <b id="aboutVer">v4.3</b></span></div>
+        <div class="about-build"><span class="lv">BUILD <b id="aboutVer">v4.4</b></span></div>
         <div class="about-meta">作者 <b>@Asepacehpe</b> · 仓库 <b><a href="https://github.com/fourth-generation-winter/DisplaySwitcher" target="_blank" rel="noopener" data-ext>github.com/fourth-generation-winter/DisplaySwitcher</a></b> · 协议 <b>MIT</b></div>
         <button class="about-btn" id="aboutCheck">&#9654; 检查更新</button>
       </div>
@@ -605,7 +605,7 @@ body{
   <div class="modal-card">
     <div class="modal-tag">— UPDATE —</div>
     <h3 class="modal-title">新版本可用</h3>
-    <div class="version-row"><span>当前 <b id="upCur">v4.3</b></span><span class="ver-arrow">→</span><span>最新 <b id="upNew">v4.3</b></span></div>
+    <div class="version-row"><span>当前 <b id="upCur">v4.4</b></span><span class="ver-arrow">→</span><span>最新 <b id="upNew">v4.4</b></span></div>
     <p class="modal-desc" id="upNotes">发现新版本，建议更新以获得完整体验。</p>
     <div class="modal-actions">
       <button class="btn-primary" id="upGo">前往下载</button>
@@ -848,12 +848,18 @@ function startAutoDownload(url){
 }
 function showDone(p){
   document.getElementById('dlSrc').textContent='— COMPLETE —';
-  document.getElementById('dlMsg').textContent='已保存到下载文件夹';
-  const path=p.path||'';
+  document.getElementById('dlMsg').textContent='下载完成，可立即重启以应用更新';
   document.getElementById('dlProgActions').innerHTML=
-    '<button class="btn-primary" id="dlOpen">打开文件夹</button><button class="btn-ghost" id="dlClose">关闭</button>';
-  document.getElementById('dlClose').addEventListener('click',()=>hideModal('dlProgMask'));
-  document.getElementById('dlOpen').addEventListener('click',()=>{ if(path) API.openFolder(path); });
+    '<button class="btn-primary" id="dlRestart">重启并更新</button><button class="btn-ghost" id="dlLater">稍后</button>';
+  document.getElementById('dlLater').addEventListener('click',()=>hideModal('dlProgMask'));
+  document.getElementById('dlRestart').addEventListener('click',async()=>{
+    document.getElementById('dlMsg').textContent='正在重启并更新…';
+    document.getElementById('dlRestart').disabled=true;
+    document.getElementById('dlLater').disabled=true;
+    const r=await API.applyUpdate();
+    if(!r || !r.ok){ toast('⚠ '+(r&&r.error||'更新失败')); }
+    // 成功时后端会自行退出并由重启脚本拉起新版本；前端无需额外操作
+  });
 }
 
 const aboutCheck=document.getElementById('aboutCheck');

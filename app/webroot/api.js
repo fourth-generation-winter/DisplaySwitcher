@@ -34,6 +34,7 @@ const API = {
   async downloadProgress(){ return (await fetch('/api/update/progress')).json(); },
   async cancelDownload(){ return (await fetch('/api/update/cancel', { method: 'POST' })).json(); },
   async openFolder(p){ return (await fetch('/api/open_folder?path=' + encodeURIComponent(p))).json(); },
+  async applyUpdate(){ return (await fetch('/api/update/apply', { method: 'POST' })).json(); },
 };
 
 /* 解析 "2560×1440" / "2560 x 1440" -> {w,h} */
