@@ -631,7 +631,7 @@ def _webroot():
 # ----------------------------------------------------------------------------
 # 5.5 检查更新 (GitHub Release)
 # ----------------------------------------------------------------------------
-APP_VERSION = "4.4"
+APP_VERSION = "4.5"
 GITHUB_REPO = "fourth-generation-winter/DisplaySwitcher"
 
 def _parse_ver(s):
@@ -1028,7 +1028,10 @@ def apply_update():
             f.write(")\n")
             f.write("goto wait\n")
             f.write(":launch\n")
-            f.write('start "" "%DS_DST%"\n')
+            # 用 explorer 启动新 exe（等同用户双击），使其父进程为桌面 shell 而非
+            # 当前 DETACHED 的 cmd，规避 WebView2 在分离/非交互上下文下做父进程
+            # 路径校验时失败（Security validation failure），导致启动弹窗。
+            f.write('explorer "%DS_DST%"\n')
             f.write("del %~f0\n")
         env = dict(os.environ)
         env["DS_SRC"] = src
@@ -1531,6 +1534,14 @@ def enforce_single_instance():
 
 def main():
     load_cfg()
+    # 固定 WebView2 用户数据目录：onefile 模式会把程序解压到 %TEMP%/_MEIxxxxxx，
+    # 若 WebView2 默认把 user data 也放那里，进程退出后目录被清理会造成状态/沙盒异常。
+    # 固定到 CONFIG_DIR 可让 user data 落在稳定路径，减少 WebView2 初始化异常。
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        os.environ.setdefault("WEBVIEW2_USER_DATA_FOLDER", CONFIG_DIR)
+    except Exception:
+        pass
     args = sys.argv[1:]
     if "--switch" in args:
         sys.exit(run_cli_switch(args))
