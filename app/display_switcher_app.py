@@ -10,7 +10,7 @@ DisplaySwitcher // CONTROL DECK
 命令行 (无界面直切):
     DisplaySwitcher.exe --switch 1920 1080 60
 """
-import os, sys, json, uuid, threading, socket, time, ctypes, functools, http.server, urllib.request, urllib.error, ssl, webbrowser, subprocess, tempfile
+import os, sys, json, uuid, threading, socket, time, ctypes, functools, http.server, urllib.request, urllib.error, ssl, webbrowser, subprocess, tempfile, shutil
 from urllib.parse import urlparse, parse_qs
 import ctypes.wintypes  # 显式导入，确保冻结( PyInstaller )后 ctypes.wintypes 仍可用
 
@@ -631,7 +631,7 @@ def _webroot():
 # ----------------------------------------------------------------------------
 # 5.5 检查更新 (GitHub Release)
 # ----------------------------------------------------------------------------
-APP_VERSION = "4.5"
+APP_VERSION = "4.6"
 GITHUB_REPO = "fourth-generation-winter/DisplaySwitcher"
 
 def _parse_ver(s):
@@ -983,14 +983,43 @@ def open_folder(path):
         return {"ok": False, "error": str(e)[:160]}
 
 
+def _finish_update(target):
+    """「更新启动器」实例（从临时目录运行、被 DS_UPDATE_TARGET 标记）的逻辑：
+    等待目标 exe 的旧进程退出解锁，把自身覆盖到目标路径，再用干净环境启动
+    最终实例，最后退出。全程由当前交互进程拉起，父进程为 explorer，WebView2
+    不会因「分离上下文」而弹 Security validation failure。
+    """
+    myself = sys.executable
+    # 最多等 60s 让旧进程退出（旧进程在收到 apply 响应后 0.4s 即 os._exit）
+    for _ in range(120):
+        try:
+            shutil.copyfile(myself, target)
+            break
+        except (PermissionError, OSError):
+            time.sleep(0.5)
+    else:
+        # 覆盖失败：直接尝试启动目标（可能是旧版本），不阻塞用户
+        pass
+    try:
+        env = dict(os.environ)
+        env.pop("DS_UPDATE_TARGET", None)  # 关键：不让最终实例继承更新标记，避免循环
+        subprocess.Popen([target], env=env, close_fds=True)
+    except Exception:
+        try:
+            os.startfile(target)
+        except Exception:
+            pass
+    os._exit(0)
+
+
 def apply_update():
     """下载完成后：用新文件覆盖当前运行的 exe 并重启程序以应用更新。
 
-    Windows 下无法直接覆盖正在运行的 exe（文件被锁定）。做法：写一个独立
-    的 .bat 重启脚本（detached 启动，脱离当前进程），脚本循环等待直到当前
-    进程退出、目标文件解锁，再用新文件 copy /Y 覆盖，最后 start 重新拉起程序，
-    脚本自我删除。当前进程在响应返回后由定时器强制退出（os._exit），把控制权
-    交给重启脚本。
+    关键修正：不再用 DETACHED 的 .bat 脚本启动新进程——分离/非交互上下文会让
+    WebView2 在做「父进程路径」安全校验时失败，弹出 Security validation failure。
+    改为「两阶段自更新」：当前交互进程把新 exe 复制到临时目录，用 os.startfile
+    启动它（父进程是 explorer，等同用户双击，WebView2 不弹）；临时实例再以
+    干净环境变量启动最终的桌面 exe。全程无黑窗、新进程始终在交互会话。
     """
     with _DL_LOCK:
         src = _DL.get("path", "")
@@ -1009,60 +1038,28 @@ def apply_update():
     dst = sys.executable
     if not dst or not os.path.isfile(dst):
         return {"ok": False, "error": "无法确定当前程序路径"}
-    if os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(dst)):
-        # 下载到的就是当前 exe 本身，无需覆盖，直接重启
-        _restart_now(dst)
-        return {"ok": True, "restarting": True}
-    # 注意：批处理文件本身不能内嵌中文路径（cmd 读 .bat 用系统默认代码页，
-    # 即使先 chcp 65001 也只影响执行不影响文件读取，会导致含中文/空格路径乱码）。
-    # 因此路径通过环境变量（宽字符）传入，.bat 内只引用 %DS_SRC%/%DS_DST%。
-    bat = os.path.join(tempfile.gettempdir(), "ds_update_%s.bat" % uuid.uuid4().hex[:8])
+    # 把新 exe 复制到临时目录，作为「更新启动器」
+    new_exe = os.path.join(tempfile.gettempdir(),
+                           "DS_Update_%s.exe" % uuid.uuid4().hex[:8])
     try:
-        with open(bat, "w", encoding="utf-8") as f:
-            f.write("@echo off\n")
-            f.write(":wait\n")
-            f.write("timeout /t 1 >nul\n")
-            f.write('copy /Y "%DS_SRC%" "%DS_DST%" >nul 2>nul\n')
-            f.write('if exist "%DS_DST%" (\n')
-            f.write('  fc /b "%DS_SRC%" "%DS_DST%" >nul 2>nul && goto launch\n')
-            f.write(")\n")
-            f.write("goto wait\n")
-            f.write(":launch\n")
-            # 用 explorer 启动新 exe（等同用户双击），使其父进程为桌面 shell 而非
-            # 当前 DETACHED 的 cmd，规避 WebView2 在分离/非交互上下文下做父进程
-            # 路径校验时失败（Security validation failure），导致启动弹窗。
-            f.write('explorer "%DS_DST%"\n')
-            f.write("del %~f0\n")
-        env = dict(os.environ)
-        env["DS_SRC"] = src
-        env["DS_DST"] = dst
-        subprocess.Popen(
-            ["cmd", "/c", bat],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-            close_fds=True, env=env,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        # 给 HTTP 响应一点时间回写，再强制退出当前进程
-        threading.Timer(0.4, lambda: os._exit(0)).start()
-        return {"ok": True, "restarting": True}
+        shutil.copyfile(src, new_exe)
+    except Exception as e:
+        return {"ok": False, "error": "无法准备更新程序: %s" % str(e)[:120]}
+    # 告诉更新启动器：它要覆盖的目标是当前的桌面 exe
+    os.environ["DS_UPDATE_TARGET"] = dst
+    try:
+        # 当前进程是交互会话，os.startfile 拉起的子进程父进程为 explorer，
+        # WebView2 父进程路径校验通过，不再弹窗。
+        os.startfile(new_exe)
     except Exception as e:
         try:
-            os.remove(bat)
+            os.remove(new_exe)
         except Exception:
             pass
-        return {"ok": False, "error": str(e)[:160]}
-
-
-def _restart_now(exe_path):
-    try:
-        subprocess.Popen(
-            ["cmd", "/c", 'start "" %s' % ('"%s"' % exe_path.replace('"', ''))],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-            close_fds=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        pass
+        return {"ok": False, "error": "无法启动更新: %s" % str(e)[:120]}
+    # 给 HTTP 响应一点时间回写，再强制退出当前进程，把控制权交给更新启动器
     threading.Timer(0.4, lambda: os._exit(0)).start()
+    return {"ok": True, "restarting": True}
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -1533,6 +1530,12 @@ def enforce_single_instance():
 
 
 def main():
+    # 更新启动器模式：本实例是从临时目录运行的「更新器」，被标记了要覆盖的目标路径。
+    # 此时不应进入正常 GUI，而是先完成覆盖并拉起最终实例，再退出。
+    target = os.environ.get("DS_UPDATE_TARGET", "")
+    if target and os.path.normcase(os.path.abspath(target)) != os.path.normcase(os.path.abspath(sys.executable)):
+        _finish_update(target)
+        return
     load_cfg()
     # 固定 WebView2 用户数据目录：onefile 模式会把程序解压到 %TEMP%/_MEIxxxxxx，
     # 若 WebView2 默认把 user data 也放那里，进程退出后目录被清理会造成状态/沙盒异常。
