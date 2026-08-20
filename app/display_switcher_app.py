@@ -631,7 +631,7 @@ def _webroot():
 # ----------------------------------------------------------------------------
 # 5.5 检查更新 (GitHub Release)
 # ----------------------------------------------------------------------------
-APP_VERSION = "4.6"
+APP_VERSION = "4.7"
 GITHUB_REPO = "fourth-generation-winter/DisplaySwitcher"
 
 def _parse_ver(s):
